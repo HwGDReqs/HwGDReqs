@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 APP_NAME = "HwGDReqs"
-APP_VERSION = "1.0.0"
+APP_VERSION = "0.2.0"
 
 TWITCH_CLIENT_ID = "hq65d75rdxry2cfjgemvydqp2vfr84"
 TWITCH_SCOPES = ["chat:read", "user:read:email"]

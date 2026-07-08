@@ -547,6 +547,7 @@ class MainWindow(QMainWindow):
         )
         dialog.logged_out.connect(self._on_logged_out)
         dialog.youtube_updated.connect(lambda: self._start_chat(self._session))
+        dialog.twitch_logged_in.connect(self._on_twitch_logged_in)
         dialog.queue_command_changed.connect(self._on_queue_command_changed)
         dialog.exec()
         self.refresh_queue()
@@ -554,6 +555,9 @@ class MainWindow(QMainWindow):
     def _on_queue_command_changed(self, enabled: bool) -> None:
         if self._chat_worker:
             self._chat_worker.queue_command_enabled = enabled
+
+    def _on_twitch_logged_in(self, session: TwitchSession) -> None:
+        self._apply_session(session)
 
     def _on_logged_out(self) -> None:
         self._stop_chat()

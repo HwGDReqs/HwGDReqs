@@ -118,7 +118,13 @@ class PlatformSelectionDialog(QDialog):
 
 
 class TwitchLoginDialog(QDialog):
-    def __init__(self, parent=None) -> None:
+    def __init__(
+        self,
+        parent=None,
+        *,
+        include_chat_edit: bool = False,
+        hide_queue_checkbox: bool = False,
+    ) -> None:
         super().__init__(parent)
         self.setWindowTitle("Twitch Login")
         self.setModal(True)
@@ -126,6 +132,8 @@ class TwitchLoginDialog(QDialog):
         self._session: TwitchSession | None = None
         self._worker: DeviceLoginWorker | None = None
         self._verification_uri = "https://www.twitch.tv/activate"
+        self._include_chat_edit = include_chat_edit
+        self._queue_command_cb: QCheckBox | None = None
 
         layout = QVBoxLayout(self)
 
@@ -153,11 +161,13 @@ class TwitchLoginDialog(QDialog):
         self._code_label.setFont(font)
         layout.addWidget(self._code_label)
 
-        self._queue_command_cb = QCheckBox(
-            "Want people to type !queue to see current queue "
-            "(will respond under your account)"
-        )
-        layout.addWidget(self._queue_command_cb)
+        if not hide_queue_checkbox:
+            self._queue_command_cb = QCheckBox(
+                "Want people to type !queue to see current queue "
+                "(will respond under your account)"
+            )
+            self._queue_command_cb.setChecked(include_chat_edit)
+            layout.addWidget(self._queue_command_cb)
 
         button_row = QHBoxLayout()
         self._login_btn = QPushButton("Start Twitch Login")
@@ -176,14 +186,20 @@ class TwitchLoginDialog(QDialog):
         return self._session
 
     def _start_login(self) -> None:
+        include_chat_edit = (
+            self._queue_command_cb.isChecked()
+            if self._queue_command_cb is not None
+            else self._include_chat_edit
+        )
         self._login_btn.setEnabled(False)
         self._open_btn.setEnabled(False)
-        self._queue_command_cb.setEnabled(False)
+        if self._queue_command_cb is not None:
+            self._queue_command_cb.setEnabled(False)
         self._code_label.setText(" ")
         self._status.setText("Starting device login...")
         self._worker = DeviceLoginWorker(
             self,
-            include_chat_edit=self._queue_command_cb.isChecked(),
+            include_chat_edit=include_chat_edit,
         )
         self._worker.started_flow.connect(self._on_flow_started)
         self._worker.auth_status.connect(self._status.setText)
@@ -210,7 +226,8 @@ class TwitchLoginDialog(QDialog):
     def _on_login_failed(self, message: str) -> None:
         self._login_btn.setEnabled(True)
         self._open_btn.setEnabled(False)
-        self._queue_command_cb.setEnabled(True)
+        if self._queue_command_cb is not None:
+            self._queue_command_cb.setEnabled(True)
         self._code_label.setText(" ")
         self._status.setText(message)
         QMessageBox.warning(self, "Twitch Login", message)

@@ -26,9 +26,11 @@ from PySide6.QtWidgets import (
 
 from hwgdreqs.config import clear_auth, data_dir, asset_path, exec_dir, APP_VERSION
 from hwgdreqs.queue_manager import QueueManager
+from hwgdreqs.login_dialog import TwitchLoginDialog
 from hwgdreqs.twitch_auth import (
     get_queue_command_enabled,
     has_chat_edit_scope,
+    load_session,
     set_queue_command_enabled,
 )
 from hwgdreqs.youtube_auth import load_youtube_session, save_youtube_session, clear_youtube_auth, YoutubeSession
@@ -586,6 +588,7 @@ class UpdaterTab(QWidget):
 class SettingsDialog(QDialog):
     logged_out = Signal()
     youtube_updated = Signal()
+    twitch_logged_in = Signal(object)
     queue_command_changed = Signal(bool)
 
     def __init__(self, queue: QueueManager, streamer_name: str, parent=None) -> None:
@@ -632,21 +635,44 @@ class SettingsDialog(QDialog):
 
         twitch_tab = QWidget()
         twitch_layout = QVBoxLayout(twitch_tab)
-        twitch_layout.addWidget(QLabel(f"Logged in as: {streamer_name or 'Not logged in'}"))
         twitch_layout.addWidget(QLabel(f"Data folder:\n{data_dir()}"))
 
-        self._has_chat_edit_scope = has_chat_edit_scope()
-        self._queue_command_cb = QCheckBox(
-            "Want people to type !queue to see current queue "
-            "(will respond under your account)"
-        )
-        self._queue_command_cb.setChecked(get_queue_command_enabled())
-        self._queue_command_cb.toggled.connect(self._on_queue_command_toggled)
-        twitch_layout.addWidget(self._queue_command_cb)
+        self._twitch_session = load_session()
+        self._queue_command_cb = None
 
-        logout_btn = QPushButton("Log Out from Twitch")
-        logout_btn.clicked.connect(self._logout)
-        twitch_layout.addWidget(logout_btn)
+        if self._twitch_session:
+            twitch_layout.addWidget(
+                QLabel(f"Logged in as: {self._twitch_session.display_name}")
+            )
+            twitch_layout.addSpacing(15)
+
+            self._has_chat_edit_scope = has_chat_edit_scope()
+            self._queue_command_cb = QCheckBox(
+                "Want people to type !queue to see current queue "
+                "(will respond under your account)"
+            )
+            self._queue_command_cb.setChecked(get_queue_command_enabled())
+            self._queue_command_cb.toggled.connect(self._on_queue_command_toggled)
+            twitch_layout.addWidget(self._queue_command_cb)
+
+            logout_btn = QPushButton("Log Out from Twitch")
+            logout_btn.clicked.connect(self._logout)
+            twitch_layout.addWidget(logout_btn)
+        else:
+            twitch_layout.addWidget(QLabel("Twitch Status: Not connected"))
+            twitch_layout.addSpacing(15)
+
+            self._login_queue_command_cb = QCheckBox(
+                "Want people to type !queue to see current queue "
+                "(will respond under your account)"
+            )
+            twitch_layout.addWidget(self._login_queue_command_cb)
+
+            login_btn = QPushButton("Login with Twitch")
+            login_btn.clicked.connect(self._login_twitch)
+            twitch_layout.addWidget(login_btn)
+            self._has_chat_edit_scope = False
+
         twitch_layout.addStretch()
         tabs.addTab(twitch_tab, "Twitch")
 
@@ -720,6 +746,8 @@ class SettingsDialog(QDialog):
         self._requesters_tab.refresh()
 
     def _on_queue_command_toggled(self, checked: bool) -> None:
+        if self._queue_command_cb is None:
+            return
         if checked and not self._has_chat_edit_scope:
             self._queue_command_cb.blockSignals(True)
             self._queue_command_cb.setChecked(False)
@@ -728,6 +756,18 @@ class SettingsDialog(QDialog):
             return
         set_queue_command_enabled(checked)
         self.queue_command_changed.emit(checked)
+
+    def _login_twitch(self) -> None:
+        include_chat_edit = self._login_queue_command_cb.isChecked()
+        dialog = TwitchLoginDialog(
+            self,
+            include_chat_edit=include_chat_edit,
+            hide_queue_checkbox=True,
+        )
+        if dialog.exec() != QDialog.DialogCode.Accepted or not dialog.session:
+            return
+        self.twitch_logged_in.emit(dialog.session)
+        self.accept()
 
     def _logout(self) -> None:
         answer = QMessageBox.question(
