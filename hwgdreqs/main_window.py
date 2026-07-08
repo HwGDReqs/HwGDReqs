@@ -232,7 +232,10 @@ class MainWindow(QMainWindow):
         if load_session():
             session = self._poll_saved_session(report)
         
-        if not session:
+        youtube_session = load_youtube_session()
+        youtube_active = youtube_session is not None and bool(youtube_session.username)
+
+        if not session and not youtube_active:
             dialog = LoginDialog(None if not self.isVisible() else self)
             if dialog.exec() != LoginDialog.DialogCode.Accepted:
                 return False
