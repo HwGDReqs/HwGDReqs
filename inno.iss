@@ -3,10 +3,11 @@
 ; Non-commercial use only
 
 #define MyAppName "HwGDReqs"
-#define MyAppVersion "0.1.0"
+#define MyAppVersion "0.2.0"
 #define MyAppPublisher "MalikHw47"
 #define MyAppURL "https://hwgdreqs.github.io"
 #define MyAppExeName "HwGDReqs.exe"
+#define UserName "MalikHw"
 
 [Setup]
 ; NOTE: The value of AppId uniquely identifies this application. Do not use the same AppId value in installers for other applications.
@@ -32,12 +33,12 @@ ArchitecturesInstallIn64BitMode=x64compatible
 ; Uncomment the following line to use a 64-bit installer.
 ;SetupArchitecture=x64
 DisableProgramGroupPage=yes
-LicenseFile=C:\Users\MalikHw\hwgdreqs source\LICENSE
+LicenseFile=C:\Users\{#UserName}\HwGDReqs\LICENSE
 ; Uncomment the following line to run in non administrative install mode (install for current user only).
 ;PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog
-OutputBaseFilename=myseHwGDreqs-setuptup
-SetupIconFile=C:\Users\MalikHw\hwgdreqs source\assets\logo.ico
+OutputBaseFilename=HwGDReqs-setup
+SetupIconFile=C:\Users\{#UserName}\HwGDReqs\assets\logo.ico
 SolidCompression=yes
 WizardStyle=modern dynamic windows11
 
@@ -48,8 +49,8 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [Files]
-Source: "C:\Users\MalikHw\HwGDReqs\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
-Source: "C:\Users\MalikHw\HwGDReqs\_internal\*"; DestDir: "{app}\_internal"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "C:\Users\{#UserName}\HwGDReqs\dist\HwGDReqs\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
+Source: "C:\Users\{#UserName}\HwGDReqs\dist\HwGDReqs\_internal\*"; DestDir: "{app}\_internal"; Flags: ignoreversion recursesubdirs createallsubdirs
 ; NOTE: Don't use "Flags: ignoreversion" on any shared system files
 
 [Icons]
