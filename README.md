@@ -25,4 +25,6 @@ a GD level requests app for streamers
 * Persistent Storage: Saves queue, blacklists, and settings
 
 
+Site: https://hwgdreqs.github.io
 
+made by MalikHw47
