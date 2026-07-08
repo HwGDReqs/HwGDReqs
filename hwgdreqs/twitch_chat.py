@@ -23,13 +23,28 @@ class TwitchChatWorker(QObject):
     connection_failed = Signal(str)
     auth_failed = Signal()
 
-    def __init__(self, session: TwitchSession, queue: QueueManager) -> None:
+    def __init__(
+        self,
+        session: TwitchSession,
+        queue: QueueManager,
+        *,
+        queue_command_enabled: bool = False,
+    ) -> None:
         super().__init__()
         self._session = session
         self._queue = queue
+        self._queue_command_enabled = queue_command_enabled
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
         self._socket: socket.socket | None = None
+
+    @property
+    def queue_command_enabled(self) -> bool:
+        return self._queue_command_enabled
+
+    @queue_command_enabled.setter
+    def queue_command_enabled(self, enabled: bool) -> None:
+        self._queue_command_enabled = enabled
 
     def start(self) -> None:
         if self._thread and self._thread.is_alive():
@@ -145,8 +160,42 @@ class TwitchChatWorker(QObject):
             logger.info(f"!replace command from {requester}: {old_level_id} -> {new_level_id}")
             self._replace_level_command(requester, old_level_id, new_level_id, message)
             return True
+
+        if command == "!queue" and self._queue_command_enabled:
+            logger.info(f"!queue command from {requester}")
+            self._queue_command()
+            return True
         
         return False
+
+    def _queue_command(self) -> None:
+        message = self._format_queue_message()
+        self._send_chat_message(message)
+
+    def _format_queue_message(self) -> str:
+        levels = self._queue.levels
+        if not levels:
+            return "[HwGDReqs] Queue is empty."
+        parts = []
+        for index, entry in enumerate(levels, start=1):
+            parts.append(f"{index}) {entry.name} from @{entry.requester}")
+        text = "[HwGDReqs] " + " ".join(parts)
+        if len(text) > 500:
+            text = text[:497] + "..."
+        return text
+
+    def _send_chat_message(self, message: str) -> None:
+        channel = self._session.login.lower()
+        safe_message = message.replace("\r", " ").replace("\n", " ")
+        sock = self._socket
+        if sock is None:
+            return
+        try:
+            sock.send(
+                f"PRIVMSG #{channel} :{safe_message}\r\n".encode("utf-8")
+            )
+        except OSError:
+            pass
 
     def _delete_level_command(self, requester: str, level_id: str) -> None:
 

@@ -26,6 +26,11 @@ from PySide6.QtWidgets import (
 
 from hwgdreqs.config import clear_auth, data_dir, asset_path, exec_dir, APP_VERSION
 from hwgdreqs.queue_manager import QueueManager
+from hwgdreqs.twitch_auth import (
+    get_queue_command_enabled,
+    has_chat_edit_scope,
+    set_queue_command_enabled,
+)
 from hwgdreqs.youtube_auth import load_youtube_session, save_youtube_session, clear_youtube_auth, YoutubeSession
 
 
@@ -147,7 +152,7 @@ class GeneralTab(QWidget):
 
 
 class CommandsTab(QWidget):
-    def __init__(self, parent=None) -> None:
+    def __init__(self, parent=None, *, show_queue_command: bool = False) -> None:
         super().__init__(parent)
         
         layout = QVBoxLayout(self)
@@ -164,6 +169,10 @@ class CommandsTab(QWidget):
             ("!del <id>", "Delete a level from the queue. Only works for the user who requested it."),
             ("!replace <id> <new-id>", "Replace a level in the queue with a new one. Only works for the user who requested it. Maintains the position in queue btw"),
         ]
+        if show_queue_command:
+            commands.append(
+                ("!queue", "Sends as you the queue contents to the chat (TWITCH ONLY)"),
+            )
         
         for command, description in commands:
             cmd_label = QLabel(command)
@@ -577,6 +586,7 @@ class UpdaterTab(QWidget):
 class SettingsDialog(QDialog):
     logged_out = Signal()
     youtube_updated = Signal()
+    queue_command_changed = Signal(bool)
 
     def __init__(self, queue: QueueManager, streamer_name: str, parent=None) -> None:
         super().__init__(parent)
@@ -617,13 +627,22 @@ class SettingsDialog(QDialog):
         self._filters_tab = FiltersTab(queue)
         tabs.addTab(self._filters_tab, "Filters")
         
-        self._commands_tab = CommandsTab()
+        self._commands_tab = CommandsTab(show_queue_command=has_chat_edit_scope())
         tabs.addTab(self._commands_tab, "Commands")
 
         twitch_tab = QWidget()
         twitch_layout = QVBoxLayout(twitch_tab)
         twitch_layout.addWidget(QLabel(f"Logged in as: {streamer_name or 'Not logged in'}"))
         twitch_layout.addWidget(QLabel(f"Data folder:\n{data_dir()}"))
+
+        self._has_chat_edit_scope = has_chat_edit_scope()
+        self._queue_command_cb = QCheckBox(
+            "Want people to type !queue to see current queue "
+            "(will respond under your account)"
+        )
+        self._queue_command_cb.setChecked(get_queue_command_enabled())
+        self._queue_command_cb.toggled.connect(self._on_queue_command_toggled)
+        twitch_layout.addWidget(self._queue_command_cb)
 
         logout_btn = QPushButton("Log Out from Twitch")
         logout_btn.clicked.connect(self._logout)
@@ -699,6 +718,16 @@ class SettingsDialog(QDialog):
         self._levels_tab.refresh()
         self._authors_tab.refresh()
         self._requesters_tab.refresh()
+
+    def _on_queue_command_toggled(self, checked: bool) -> None:
+        if checked and not self._has_chat_edit_scope:
+            self._queue_command_cb.blockSignals(True)
+            self._queue_command_cb.setChecked(False)
+            self._queue_command_cb.blockSignals(False)
+            QMessageBox.information(self, "Twitch", "You need to re-login")
+            return
+        set_queue_command_enabled(checked)
+        self.queue_command_changed.emit(checked)
 
     def _logout(self) -> None:
         answer = QMessageBox.question(

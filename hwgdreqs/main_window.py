@@ -64,7 +64,7 @@ from hwgdreqs.api_server import ApiServer
 from hwgdreqs.queue_manager import LevelEntry, QueueManager
 from hwgdreqs.session_worker import SessionValidationWorker
 from hwgdreqs.settings_dialog import SettingsDialog
-from hwgdreqs.twitch_auth import TwitchSession, load_session
+from hwgdreqs.twitch_auth import TwitchSession, get_queue_command_enabled, load_session
 from hwgdreqs.twitch_chat import TwitchChatWorker
 from hwgdreqs.youtube_auth import load_youtube_session, save_youtube_session, YoutubeSession
 from hwgdreqs.youtube_chat import YoutubeChatWorker
@@ -295,7 +295,11 @@ class MainWindow(QMainWindow):
         self._youtube_session = load_youtube_session()
         
         if session:
-            self._chat_worker = TwitchChatWorker(session, self._queue)
+            self._chat_worker = TwitchChatWorker(
+                session,
+                self._queue,
+                queue_command_enabled=get_queue_command_enabled(),
+            )
             self._chat_worker.status_changed.connect(self._on_twitch_status_changed)
             self._chat_worker.connection_failed.connect(self._on_chat_failed)
             self._chat_worker.auth_failed.connect(self._on_chat_auth_failed)
@@ -543,8 +547,13 @@ class MainWindow(QMainWindow):
         )
         dialog.logged_out.connect(self._on_logged_out)
         dialog.youtube_updated.connect(lambda: self._start_chat(self._session))
+        dialog.queue_command_changed.connect(self._on_queue_command_changed)
         dialog.exec()
         self.refresh_queue()
+
+    def _on_queue_command_changed(self, enabled: bool) -> None:
+        if self._chat_worker:
+            self._chat_worker.queue_command_enabled = enabled
 
     def _on_logged_out(self) -> None:
         self._stop_chat()

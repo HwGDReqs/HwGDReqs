@@ -7,6 +7,7 @@ from dataclasses import dataclass
 import requests
 
 from hwgdreqs.config import (
+    TWITCH_CHAT_EDIT_SCOPE,
     TWITCH_CLIENT_ID,
     TWITCH_DEVICE_URL,
     TWITCH_SCOPES,
@@ -37,6 +38,8 @@ class TwitchSession:
     login: str
     display_name: str
     user_id: str
+    chat_edit_scope: bool = False
+    queue_command_enabled: bool = False
 
     @classmethod
     def from_auth_dict(cls, data: dict) -> TwitchSession:
@@ -46,6 +49,8 @@ class TwitchSession:
             login=data["login"],
             display_name=data.get("display_name", data["login"]),
             user_id=data["user_id"],
+            chat_edit_scope=bool(data.get("chat_edit_scope")),
+            queue_command_enabled=bool(data.get("queue_command_enabled")),
         )
 
     def to_auth_dict(self) -> dict:
@@ -55,7 +60,31 @@ class TwitchSession:
             "login": self.login,
             "display_name": self.display_name,
             "user_id": self.user_id,
+            "chat_edit_scope": self.chat_edit_scope,
+            "queue_command_enabled": self.queue_command_enabled,
         }
+
+
+def has_chat_edit_scope() -> bool:
+    data = load_auth()
+    return bool(data and data.get("chat_edit_scope"))
+
+
+def get_queue_command_enabled() -> bool:
+    data = load_auth()
+    return bool(
+        data
+        and data.get("chat_edit_scope")
+        and data.get("queue_command_enabled")
+    )
+
+
+def set_queue_command_enabled(enabled: bool) -> None:
+    data = load_auth()
+    if not data:
+        return
+    data["queue_command_enabled"] = enabled
+    save_auth(data)
 
 
 def _require_client_id() -> str:
@@ -66,13 +95,16 @@ def _require_client_id() -> str:
     return TWITCH_CLIENT_ID
 
 
-def start_device_flow() -> DeviceFlowStart:
+def start_device_flow(*, include_chat_edit: bool = False) -> DeviceFlowStart:
     client_id = _require_client_id()
+    scopes = list(TWITCH_SCOPES)
+    if include_chat_edit:
+        scopes.append(TWITCH_CHAT_EDIT_SCOPE)
     response = requests.post(
         TWITCH_DEVICE_URL,
         data={
             "client_id": client_id,
-            "scopes": " ".join(TWITCH_SCOPES),
+            "scopes": " ".join(scopes),
         },
         timeout=15,
     )
@@ -166,7 +198,11 @@ def fetch_user(access_token: str) -> dict:
     return users[0]
 
 
-def session_from_token(token_data: dict) -> TwitchSession:
+def session_from_token(
+    token_data: dict,
+    *,
+    chat_edit_scope: bool = False,
+) -> TwitchSession:
     user = fetch_user(token_data["access_token"])
     session = TwitchSession(
         access_token=token_data["access_token"],
@@ -174,6 +210,8 @@ def session_from_token(token_data: dict) -> TwitchSession:
         login=user["login"],
         display_name=user.get("display_name", user["login"]),
         user_id=user["id"],
+        chat_edit_scope=chat_edit_scope,
+        queue_command_enabled=chat_edit_scope,
     )
     save_auth(session.to_auth_dict())
     return session
@@ -184,6 +222,7 @@ def complete_device_login(
     interval: int,
     *,
     expires_in: int | None = None,
+    chat_edit_scope: bool = False,
     on_pending: Callable[[int], None] | None = None,
 ) -> TwitchSession:
     token_data = poll_device_token(
@@ -192,7 +231,7 @@ def complete_device_login(
         expires_in=expires_in,
         on_pending=on_pending,
     )
-    return session_from_token(token_data)
+    return session_from_token(token_data, chat_edit_scope=chat_edit_scope)
 
 
 def load_session() -> TwitchSession | None:

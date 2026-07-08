@@ -2,6 +2,7 @@ import webbrowser
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
+    QCheckBox,
     QDialog,
     QHBoxLayout,
     QLabel,
@@ -152,6 +153,12 @@ class TwitchLoginDialog(QDialog):
         self._code_label.setFont(font)
         layout.addWidget(self._code_label)
 
+        self._queue_command_cb = QCheckBox(
+            "Want people to type !queue to see current queue "
+            "(will respond under your account)"
+        )
+        layout.addWidget(self._queue_command_cb)
+
         button_row = QHBoxLayout()
         self._login_btn = QPushButton("Start Twitch Login")
         self._login_btn.clicked.connect(self._start_login)
@@ -171,9 +178,13 @@ class TwitchLoginDialog(QDialog):
     def _start_login(self) -> None:
         self._login_btn.setEnabled(False)
         self._open_btn.setEnabled(False)
+        self._queue_command_cb.setEnabled(False)
         self._code_label.setText(" ")
         self._status.setText("Starting device login...")
-        self._worker = DeviceLoginWorker(self)
+        self._worker = DeviceLoginWorker(
+            self,
+            include_chat_edit=self._queue_command_cb.isChecked(),
+        )
         self._worker.started_flow.connect(self._on_flow_started)
         self._worker.auth_status.connect(self._status.setText)
         self._worker.login_complete.connect(self._on_login_complete)
@@ -199,6 +210,7 @@ class TwitchLoginDialog(QDialog):
     def _on_login_failed(self, message: str) -> None:
         self._login_btn.setEnabled(True)
         self._open_btn.setEnabled(False)
+        self._queue_command_cb.setEnabled(True)
         self._code_label.setText(" ")
         self._status.setText(message)
         QMessageBox.warning(self, "Twitch Login", message)
