@@ -1,8 +1,8 @@
 import sys
 from collections.abc import Callable
 
-from PySide6.QtCore import QEventLoop, Qt, QThread, Signal, QUrl, QSize
-from PySide6.QtGui import QGuiApplication, QPixmap, QFont, QIcon
+from PySide6.QtCore import QEventLoop, Qt, QThread, Signal, QUrl, QSize, QTimer
+from PySide6.QtGui import QGuiApplication, QPixmap, QFont, QIcon, QKeySequence, QShortcut
 from PySide6.QtNetwork import QNetworkAccessManager, QNetworkRequest, QNetworkReply
 from PySide6.QtWidgets import (
     QHBoxLayout,
@@ -16,6 +16,10 @@ from PySide6.QtWidgets import (
     QWidget,
     QScrollArea,
     QSizePolicy,
+    QMessageBox,
+    QDialog,
+    QFrame,
+    QGridLayout,
 )
 
 
@@ -71,6 +75,164 @@ from hwgdreqs.youtube_chat import YoutubeChatWorker
 from hwgdreqs.config import asset_path
 
 
+class DraggableListWidget(QListWidget):
+    model_reordered = Signal()
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setDragEnabled(False)
+        self.setAcceptDrops(True)
+        self.setDropIndicatorShown(True)
+        self.setDragDropMode(QListWidget.DragDropMode.InternalMove)
+        
+        self._press_timer = QTimer(self)
+        self._press_timer.setSingleShot(True)
+        self._press_timer.timeout.connect(self._on_hold_timeout)
+        self._drag_start_pos = None
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            item = self.itemAt(event.position().toPoint())
+            if item:
+                self._drag_start_pos = event.position().toPoint()
+                self.setDragEnabled(False)
+                self._press_timer.start(1000)
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        if self._drag_start_pos and not self.dragEnabled():
+            delta = (event.position().toPoint() - self._drag_start_pos).manhattanLength()
+            if delta > 10:
+                self._press_timer.stop()
+                self._drag_start_pos = None
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        self._press_timer.stop()
+        self._drag_start_pos = None
+        self.setDragEnabled(False)
+        self.unsetCursor()
+        super().mouseReleaseEvent(event)
+
+    def _on_hold_timeout(self):
+        if self._drag_start_pos:
+            self.setDragEnabled(True)
+            self.setCursor(Qt.CursorShape.OpenHandCursor)
+
+    def dropEvent(self, event):
+        super().dropEvent(event)
+        self.setDragEnabled(False)
+        self._drag_start_pos = None
+        self.unsetCursor()
+        self.model_reordered.emit()
+
+
+class StatisticsDialog(QDialog):
+    def __init__(self, queue: QueueManager, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Statistics")
+        self.setModal(True)
+        self.resize(500, 280)
+        
+        import time
+        from datetime import datetime, date
+        from collections import Counter
+        
+        today_date = date.today()
+        
+        def is_today(ts: float) -> bool:
+            if ts <= 0.0:
+                return False
+            try:
+                return datetime.fromtimestamp(ts).date() == today_date
+            except Exception:
+                return False
+
+        all_entries = queue.levels + queue.level_history
+        
+        # Today
+        today_entries = [e for e in all_entries if is_today(e.timestamp)]
+        today_levels = len(today_entries)
+        today_requesters = len(set(e.requester.lower() for e in today_entries))
+        today_creators = len(set(e.author.lower() for e in today_entries))
+        
+        # Blacklisted requesters today
+        blacklist_req_timestamps = queue._data.blacklist_timestamps.get("requesters", {})
+        today_blacklisted_reqs = sum(1 for ts in blacklist_req_timestamps.values() if is_today(ts))
+        
+        # Most active requester today
+        today_req_counts = Counter(e.requester for e in today_entries)
+        if today_req_counts:
+            most_active_today_req, _ = today_req_counts.most_common(1)[0]
+            most_active_today = f'"{most_active_today_req}"'
+        else:
+            most_active_today = "N/A"
+            
+        # Always
+        always_levels = len(all_entries)
+        always_requesters = len(set(e.requester.lower() for e in all_entries))
+        always_creators = len(set(e.author.lower() for e in all_entries))
+        
+        # Blacklisted requesters always
+        always_blacklisted_reqs = len(queue.blacklist_requesters)
+        
+        # Most active requester always
+        always_req_counts = Counter(e.requester for e in all_entries)
+        if always_req_counts:
+            most_active_always_req, _ = always_req_counts.most_common(1)[0]
+            most_active_always = f'"{most_active_always_req}"'
+        else:
+            most_active_always = "N/A"
+            
+        main_layout = QVBoxLayout(self)
+        
+        grid = QGridLayout()
+        grid.setSpacing(12)
+        
+        header_font = QFont()
+        header_font.setBold(True)
+        header_font.setPointSize(11)
+        
+        today_hdr = QLabel("Today (today, not session):")
+        today_hdr.setFont(header_font)
+        grid.addWidget(today_hdr, 0, 0)
+        
+        always_hdr = QLabel("Always:")
+        always_hdr.setFont(header_font)
+        grid.addWidget(always_hdr, 0, 2)
+        
+        # Vertical separator
+        vline = QFrame()
+        vline.setFrameShape(QFrame.Shape.VLine)
+        vline.setFrameShadow(QFrame.Shadow.Sunken)
+        grid.addWidget(vline, 0, 1, 6, 1)
+        
+        grid.addWidget(QLabel(f"{today_levels} levels so far"), 1, 0)
+        grid.addWidget(QLabel(f"{always_levels} levels so far"), 1, 2)
+        
+        grid.addWidget(QLabel(f"{today_requesters} requesters so far"), 2, 0)
+        grid.addWidget(QLabel(f"{always_requesters} requesters so far"), 2, 2)
+        
+        grid.addWidget(QLabel(f"{today_creators} creators so far"), 3, 0)
+        grid.addWidget(QLabel(f"{always_creators} creators so far"), 3, 2)
+        
+        grid.addWidget(QLabel(f"{today_blacklisted_reqs} blacklisted requesters so far"), 4, 0)
+        grid.addWidget(QLabel(f"{always_blacklisted_reqs} blacklisted requesters so far"), 4, 2)
+        
+        grid.addWidget(QLabel(f"most active requester {most_active_today}"), 5, 0)
+        grid.addWidget(QLabel(f"most active requester {most_active_always}"), 5, 2)
+        
+        main_layout.addLayout(grid)
+        main_layout.addSpacing(10)
+        
+        btn_layout = QHBoxLayout()
+        btn_layout.addStretch()
+        close_btn = QPushButton("Close")
+        close_btn.clicked.connect(self.accept)
+        btn_layout.addWidget(close_btn)
+        main_layout.addLayout(btn_layout)
+
+
 class MainWindow(QMainWindow):
     def __init__(self, queue: QueueManager, parent=None) -> None:
         super().__init__(parent)
@@ -103,6 +265,9 @@ class MainWindow(QMainWindow):
         self._streamer_label = QLabel("Not connected to Twitch")
         header.addWidget(self._streamer_label)
         header.addStretch()
+        self._refresh_youtube_btn = QPushButton("Refresh Youtube")
+        self._refresh_youtube_btn.clicked.connect(self._refresh_youtube)
+        header.addWidget(self._refresh_youtube_btn)
         settings_btn = QPushButton("Settings")
         settings_btn.clicked.connect(self._open_settings)
         header.addWidget(settings_btn)
@@ -110,8 +275,9 @@ class MainWindow(QMainWindow):
 
         content_layout = QHBoxLayout()
         
-        self._list = QListWidget()
+        self._list = DraggableListWidget()
         self._list.currentItemChanged.connect(self._on_selection_changed)
+        self._list.model_reordered.connect(self._on_list_reordered)
         content_layout.addWidget(self._list, stretch=2)
         
         self._details_panel = QWidget()
@@ -145,6 +311,11 @@ class MainWindow(QMainWindow):
         self._sender_label = QLabel()
         self._sender_label.setWordWrap(True)
         details_layout.addWidget(self._sender_label)
+        details_layout.addSpacing(10)
+        
+        self._timestamp_label = QLabel()
+        self._timestamp_label.setWordWrap(True)
+        details_layout.addWidget(self._timestamp_label)
         details_layout.addSpacing(10)
         
         self._difficulty_label = QLabel()
@@ -196,6 +367,9 @@ class MainWindow(QMainWindow):
             actions.addWidget(btn)
         
         actions.addWidget(self._clear_queue_btn)
+        self._stats_btn = QPushButton("Statistics")
+        self._stats_btn.clicked.connect(self._show_statistics)
+        actions.addWidget(self._stats_btn)
 
         self._copy_btn.clicked.connect(self._copy_id)
         self._delete_btn.clicked.connect(self._delete_selected)
@@ -210,6 +384,13 @@ class MainWindow(QMainWindow):
         self._queue.add_listener(self.refresh_queue)
         self.refresh_queue()
         self._set_action_buttons_enabled(False)
+
+        # Shortcuts
+        self._copy_shortcut = QShortcut(QKeySequence(Qt.Modifier.CTRL | Qt.Key.Key_C), self)
+        self._copy_shortcut.activated.connect(self._copy_id)
+        
+        self._delete_shortcut = QShortcut(QKeySequence(Qt.Key.Key_Delete), self)
+        self._delete_shortcut.activated.connect(self._delete_selected)
 
         self._api_server.start()
 
@@ -347,6 +528,13 @@ class MainWindow(QMainWindow):
         self._youtube_not_streaming = True
         self._youtube_connected = False
         self._update_connection_label()
+        
+        username = self._youtube_session.username if self._youtube_session else "@youtube"
+        QMessageBox.warning(
+            self,
+            "YouTube Chat",
+            f"you {username} dont appear to be live, when u become live click Refresh Youtube on top right to recheck"
+        )
 
     def _stop_chat(self) -> None:
         if self._chat_worker:
@@ -376,11 +564,11 @@ class MainWindow(QMainWindow):
         selected_id = self._selected_entry().id if self._selected_entry() else None
         index_to_select = self._list.currentRow()
         self._list.clear()
-        for entry in self._queue.levels:
+        for index, entry in enumerate(self._queue.levels):
             item = QListWidgetItem()
             item.setData(Qt.ItemDataRole.UserRole, entry)
             
-            text = f'"{entry.name}" by {entry.author}'
+            text = f'[{index+1}] "{entry.name}" by {entry.author}'
             platform_icon = None
             if entry.platform == "youtube":
                 platform_icon = self._youtube_icon
@@ -420,6 +608,12 @@ class MainWindow(QMainWindow):
         self._author_label.setText(f"by \"{entry.author}\"")
         self._description_label.setText(f"description: \"{entry.description}\"")
         self._sender_label.setText(f"from \"{entry.requester}\"")
+        if entry.timestamp > 0:
+            from datetime import datetime
+            time_str = datetime.fromtimestamp(entry.timestamp).strftime("%I:%M %p").lstrip('0')
+            self._timestamp_label.setText(f"timestamp: {time_str}")
+        else:
+            self._timestamp_label.setText("timestamp: Unknown")
         self._difficulty_label.setText(f"difficulty: {entry.difficulty}")
         self._platform_label.clear()
         self._message_label.setText(f"message: \"{entry.message}\"")
@@ -453,6 +647,7 @@ class MainWindow(QMainWindow):
         self._author_label.clear()
         self._description_label.clear()
         self._sender_label.clear()
+        self._timestamp_label.clear()
         self._difficulty_label.clear()
         self._platform_label.clear()
         self._message_label.clear()
@@ -565,6 +760,39 @@ class MainWindow(QMainWindow):
         self._streamer_label.setText("Not connected to Twitch")
         if not self.relogin("Logged out. Log in again to reconnect chat."):
             self.statusBar().showMessage("Not connected to Twitch.")
+
+    def _on_list_reordered(self) -> None:
+        new_levels = []
+        for i in range(self._list.count()):
+            item = self._list.item(i)
+            entry = item.data(Qt.ItemDataRole.UserRole)
+            if entry:
+                new_levels.append(entry)
+        self._queue.reorder_levels(new_levels)
+
+    def _show_statistics(self) -> None:
+        dialog = StatisticsDialog(self._queue, self)
+        dialog.exec()
+
+    def _refresh_youtube(self) -> None:
+        if self._youtube_chat_worker:
+            self._youtube_chat_worker.stop()
+            self._youtube_chat_worker = None
+        
+        self._youtube_connected = False
+        self._youtube_not_streaming = False
+        
+        self._youtube_session = load_youtube_session()
+        if self._youtube_session:
+            self.statusBar().showMessage("Refreshing YouTube chat...")
+            self._youtube_chat_worker = YoutubeChatWorker(self._youtube_session.username, self._queue)
+            self._youtube_chat_worker.status_changed.connect(self._on_youtube_status_changed)
+            self._youtube_chat_worker.connection_failed.connect(self._on_youtube_chat_failed)
+            self._youtube_chat_worker.not_streaming.connect(self._on_youtube_not_streaming)
+            self._youtube_chat_worker.start()
+        else:
+            self.statusBar().showMessage("YouTube is not configured.")
+        self._update_connection_label()
 
     def closeEvent(self, event) -> None:
         self._stop_chat()

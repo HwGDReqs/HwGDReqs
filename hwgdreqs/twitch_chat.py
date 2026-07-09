@@ -166,11 +166,41 @@ class TwitchChatWorker(QObject):
             self._queue_command()
             return True
         
+        if command == "!whereami" and self._queue_command_enabled:
+            logger.info(f"!whereami command from {requester}")
+            self._whereami_command(requester)
+            return True
+        
         return False
 
     def _queue_command(self) -> None:
         message = self._format_queue_message()
         self._send_chat_message(message)
+
+    def _whereami_command(self, requester: str) -> None:
+        levels = self._queue.levels
+        requester_lower = requester.lower()
+        
+        matching_indices = []
+        for index, entry in enumerate(levels):
+            if entry.requester.lower() == requester_lower:
+                matching_indices.append((index, entry))
+                
+        if not matching_indices:
+            self._send_chat_message("[HwGDReqs] you don't have any levels in the queue.")
+            return
+            
+        first_index, first_entry = matching_indices[0]
+        pos = first_index + 1
+        name = first_entry.name
+        
+        if len(matching_indices) > 1:
+            more_count = len(matching_indices) - 1
+            msg = f"[HwGDReqs] you're in position {pos} with your level '{name}' and {more_count} more"
+        else:
+            msg = f"[HwGDReqs] you're in position {pos} with your level '{name}'"
+            
+        self._send_chat_message(msg)
 
     def _format_queue_message(self) -> str:
         levels = self._queue.levels

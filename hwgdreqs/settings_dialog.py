@@ -175,6 +175,9 @@ class CommandsTab(QWidget):
             commands.append(
                 ("!queue", "Sends as you the queue contents to the chat (TWITCH ONLY)"),
             )
+            commands.append(
+                ("!whereami", "Replies with your current position in the queue and details about your levels (TWITCH ONLY)"),
+            )
         
         for command, description in commands:
             cmd_label = QLabel(command)

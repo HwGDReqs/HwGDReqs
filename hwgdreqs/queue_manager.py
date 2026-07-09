@@ -1,4 +1,5 @@
 import json
+import time
 from dataclasses import asdict, dataclass, field
 from typing import Callable
 
@@ -32,6 +33,7 @@ class LevelEntry:
     length: str = ""
     large: bool = False
     two_player: bool = False
+    timestamp: float = 0.0
 
 
 @dataclass
@@ -47,6 +49,11 @@ class QueueData:
     max_levels_per_requester: int = 0
     thumbnail_cache_size: int = 25
     requester_level_counts: dict[str, int] = field(default_factory=dict)
+    blacklist_timestamps: dict[str, dict[str, float]] = field(default_factory=lambda: {
+        "levels": {},
+        "authors": {},
+        "requesters": {}
+    })
 
 
 class QueueManager(QObject):
@@ -197,6 +204,25 @@ class QueueManager(QObject):
             thumbnail_cache_size=int(raw.get("thumbnail_cache_size", 25)),
         )
 
+        # Populate missing timestamps
+        blacklist_timestamps = raw.get("blacklist_timestamps", {})
+        self._data.blacklist_timestamps = {
+            "levels": blacklist_timestamps.get("levels", {}),
+            "authors": blacklist_timestamps.get("authors", {}),
+            "requesters": blacklist_timestamps.get("requesters", {})
+        }
+        for item in self._data.blacklist_levels:
+            if item not in self._data.blacklist_timestamps["levels"]:
+                self._data.blacklist_timestamps["levels"][item] = 0.0
+        for item in self._data.blacklist_authors:
+            key = item.lower()
+            if key not in self._data.blacklist_timestamps["authors"]:
+                self._data.blacklist_timestamps["authors"][key] = 0.0
+        for item in self._data.blacklist_requesters:
+            key = item.lower()
+            if key not in self._data.blacklist_timestamps["requesters"]:
+                self._data.blacklist_timestamps["requesters"][key] = 0.0
+
     def save(self) -> None:
         payload = {
             "levels": [asdict(entry) for entry in self._data.levels],
@@ -209,6 +235,7 @@ class QueueManager(QObject):
             "no_disliked": self._data.no_disliked,
             "max_levels_per_requester": self._data.max_levels_per_requester,
             "thumbnail_cache_size": self._data.thumbnail_cache_size,
+            "blacklist_timestamps": self._data.blacklist_timestamps,
         }
         queue_file().write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
@@ -227,6 +254,7 @@ class QueueManager(QObject):
         large: bool = False,
         two_player: bool = False,
         disliked: bool = False,
+        timestamp: float | None = None,
     ) -> bool:
         level_id = str(level_id)
         author_lower = author.lower()
@@ -251,6 +279,9 @@ class QueueManager(QObject):
             if self.get_requester_level_count(requester) >= self._data.max_levels_per_requester:
                 return False
         
+        if timestamp is None:
+            timestamp = time.time()
+
         entry = LevelEntry(
             id=level_id,
             name=name,
@@ -263,6 +294,7 @@ class QueueManager(QObject):
             length=length,
             large=large,
             two_player=two_player,
+            timestamp=timestamp,
         )
 
         self._data.levels.append(entry)
@@ -306,6 +338,7 @@ class QueueManager(QObject):
         large: bool = False,
         two_player: bool = False,
         disliked: bool = False,
+        timestamp: float | None = None,
     ) -> None:
 
         old_index = None
@@ -319,6 +352,9 @@ class QueueManager(QObject):
         if old_index is None:
             return
         
+        if timestamp is None:
+            timestamp = old_level.timestamp if old_level else time.time()
+
         entry = LevelEntry(
             id=level_id,
             name=name,
@@ -331,6 +367,7 @@ class QueueManager(QObject):
             length=length,
             large=large,
             two_player=two_player,
+            timestamp=timestamp,
         )
         
         self._data.levels[old_index] = entry
@@ -349,6 +386,7 @@ class QueueManager(QObject):
         
         if level_id not in self._data.blacklist_levels:
             self._data.blacklist_levels.append(level_id)
+            self._data.blacklist_timestamps["levels"][level_id] = time.time()
             self.save()
             self._notify()
             if level_name:
@@ -358,6 +396,7 @@ class QueueManager(QObject):
         key = author.lower()
         if key not in [a.lower() for a in self._data.blacklist_authors]:
             self._data.blacklist_authors.append(author)
+            self._data.blacklist_timestamps["authors"][key] = time.time()
             self.save()
             self._notify()
             log_author_blacklisted(author)
@@ -366,6 +405,7 @@ class QueueManager(QObject):
         key = requester.lower()
         if key not in [r.lower() for r in self._data.blacklist_requesters]:
             self._data.blacklist_requesters.append(requester)
+            self._data.blacklist_timestamps["requesters"][key] = time.time()
             self.save()
             self._notify()
             log_requester_blacklisted(requester)
@@ -374,6 +414,7 @@ class QueueManager(QObject):
         self._data.blacklist_levels = [
             lid for lid in self._data.blacklist_levels if lid != level_id
         ]
+        self._data.blacklist_timestamps["levels"].pop(level_id, None)
         self.save()
         self._notify()
         log_level_unblacklisted(level_id)
@@ -383,6 +424,7 @@ class QueueManager(QObject):
         self._data.blacklist_authors = [
             a for a in self._data.blacklist_authors if a.lower() != key
         ]
+        self._data.blacklist_timestamps["authors"].pop(key, None)
         self.save()
         self._notify()
         log_author_unblacklisted(author)
@@ -392,15 +434,22 @@ class QueueManager(QObject):
         self._data.blacklist_requesters = [
             r for r in self._data.blacklist_requesters if r.lower() != key
         ]
+        self._data.blacklist_timestamps["requesters"].pop(key, None)
         self.save()
         self._notify()
         log_requester_unblacklisted(requester)
 
     def clear_queue(self) -> None:
+        self._data.level_history = self._data.levels + self._data.level_history
         self._data.levels = []
         self.save()
         self._notify()
         log_queue_cleared()
+
+    def reorder_levels(self, new_levels: list[LevelEntry]) -> None:
+        self._data.levels = list(new_levels)
+        self.save()
+        self._notify()
 
 
 def add_level_to_queue(

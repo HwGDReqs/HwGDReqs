@@ -3,7 +3,7 @@
 ; Non-commercial use only
 
 #define MyAppName "HwGDReqs"
-#define MyAppVersion "0.2.0"
+#define MyAppVersion "0.3.0"
 #define MyAppPublisher "MalikHw47"
 #define MyAppURL "https://hwgdreqs.github.io"
 #define MyAppExeName "HwGDReqs.exe"
@@ -36,7 +36,7 @@ DisableProgramGroupPage=yes
 LicenseFile=C:\Users\{#UserName}\HwGDReqs\LICENSE
 ; Uncomment the following line to run in non administrative install mode (install for current user only).
 ;PrivilegesRequired=lowest
-PrivilegesRequiredOverridesAllowed=dialog
+PrivilegesRequiredOverridesAllowed=commandline dialog
 OutputBaseFilename=HwGDReqs-setup
 SetupIconFile=C:\Users\{#UserName}\HwGDReqs\assets\logo.ico
 SolidCompression=yes
