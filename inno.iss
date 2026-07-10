@@ -41,6 +41,8 @@ OutputBaseFilename=HwGDReqs-setup
 SetupIconFile=C:\Users\{#UserName}\HwGDReqs\assets\logo.ico
 SolidCompression=yes
 WizardStyle=modern dynamic windows11
+WizardSmallImageFile=C:\Users\{#UserName}\HwGDReqs\inno-assets\wizard-small.bmp
+
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
