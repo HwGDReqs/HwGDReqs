@@ -318,7 +318,7 @@ def ban_twitch_user(session: TwitchSession, target_username: str) -> str | None:
     body = {
         "data": {
             "user_id": target_user_id,
-            "reason": "Banned from GD Level Request App",
+            "reason": "Banned from HwGDReqs",
         }
     }
     try:
