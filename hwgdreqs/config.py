@@ -13,6 +13,7 @@ APP_VERSION = "0.3.0"
 TWITCH_CLIENT_ID = "hq65d75rdxry2cfjgemvydqp2vfr84"
 TWITCH_SCOPES = ["chat:read", "user:read:email"]
 TWITCH_CHAT_EDIT_SCOPE = "chat:edit"
+TWITCH_CHANNEL_MODERATE_SCOPE = "channel:moderate"
 TWITCH_DEVICE_URL = "https://id.twitch.tv/oauth2/device"
 TWITCH_TOKEN_URL = "https://id.twitch.tv/oauth2/token"
 TWITCH_USERS_URL = "https://api.twitch.tv/helix/users"
@@ -20,6 +21,7 @@ TWITCH_IRC_HOST = "irc.chat.twitch.tv"
 TWITCH_IRC_PORT = 6667
 
 LEVEL_ID_PATTERN = r"\b(\d{7,9})\b"
+COMMA_LEVEL_ID_PATTERN = r"\b(\d{1,3}(?:,\d{3})+)\b"
 
 
 def app_root() -> Path:

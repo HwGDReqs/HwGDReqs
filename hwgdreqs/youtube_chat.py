@@ -241,19 +241,26 @@ class YoutubeChatWorker(QObject):
                         if self._handle_commands(author, message):
                             continue
 
-                        level_ids = set()
+                        matches = []
+                        for m in LEVEL_RE.finditer(message):
+                            matches.append((m.start(), m.group(1)))
+                        for m in COMMA_LEVEL_RE.finditer(message):
+                            matches.append((m.start(), m.group(1).replace(",", "")))
+
+                        matches.sort(key=lambda x: x[0])
                         
-                        for level_id in LEVEL_RE.findall(message):
-                            level_ids.add(level_id)
-                        
-                        for comma_id in COMMA_LEVEL_RE.findall(message):
-                            regular_id = comma_id.replace(",", "")
-                            level_ids.add(regular_id)
-                        
-                        for level_id in level_ids:
-                            logger.info(f"Level detected: {level_id} from {author}")
-                            self.level_detected.emit(level_id, author)
-                            self._enqueue_level(author, level_id, message)
+                        level_ids = []
+                        for _, lid in matches:
+                            if lid not in level_ids:
+                                level_ids.append(lid)
+
+                        if level_ids:
+                            if not self._queue.check_and_update_cooldown(author):
+                                continue
+                            for level_id in level_ids:
+                                logger.info(f"Level detected: {level_id} from {author}")
+                                self.level_detected.emit(level_id, author)
+                                self._enqueue_level(author, level_id, message)
                 except Exception as e:
                     if not self._stop_event.is_set():
                         self.status_changed.emit(f"YouTube chat error: {str(e)}")

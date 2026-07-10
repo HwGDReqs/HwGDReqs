@@ -14,14 +14,16 @@ class DeviceLoginWorker(QThread):
     login_complete = Signal(object)
     login_failed = Signal(str)
 
-    def __init__(self, parent=None, *, include_chat_edit: bool = False) -> None:
+    def __init__(self, parent=None, *, include_chat_edit: bool = False, include_channel_moderate: bool = False) -> None:
         super().__init__(parent)
         self._include_chat_edit = include_chat_edit
+        self._include_channel_moderate = include_channel_moderate
 
     def run(self) -> None:
         try:
             flow: DeviceFlowStart = start_device_flow(
                 include_chat_edit=self._include_chat_edit,
+                include_channel_moderate=self._include_channel_moderate,
             )
             self.started_flow.emit(flow)
             session = complete_device_login(
@@ -29,6 +31,7 @@ class DeviceLoginWorker(QThread):
                 flow.interval,
                 expires_in=flow.expires_in,
                 chat_edit_scope=self._include_chat_edit,
+                channel_moderate_scope=self._include_channel_moderate,
                 on_pending=lambda attempt: self.auth_status.emit(
                     f"Waiting for Twitch authorization... ({attempt})"
                 ),

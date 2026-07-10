@@ -7,6 +7,7 @@ from dataclasses import dataclass
 import requests
 
 from hwgdreqs.config import (
+    TWITCH_CHANNEL_MODERATE_SCOPE,
     TWITCH_CHAT_EDIT_SCOPE,
     TWITCH_CLIENT_ID,
     TWITCH_DEVICE_URL,
@@ -40,6 +41,8 @@ class TwitchSession:
     user_id: str
     chat_edit_scope: bool = False
     queue_command_enabled: bool = False
+    channel_moderate_scope: bool = False
+    channel_moderate_enabled: bool = False
 
     @classmethod
     def from_auth_dict(cls, data: dict) -> TwitchSession:
@@ -51,6 +54,8 @@ class TwitchSession:
             user_id=data["user_id"],
             chat_edit_scope=bool(data.get("chat_edit_scope")),
             queue_command_enabled=bool(data.get("queue_command_enabled")),
+            channel_moderate_scope=bool(data.get("channel_moderate_scope")),
+            channel_moderate_enabled=bool(data.get("channel_moderate_enabled")),
         )
 
     def to_auth_dict(self) -> dict:
@@ -62,6 +67,8 @@ class TwitchSession:
             "user_id": self.user_id,
             "chat_edit_scope": self.chat_edit_scope,
             "queue_command_enabled": self.queue_command_enabled,
+            "channel_moderate_scope": self.channel_moderate_scope,
+            "channel_moderate_enabled": self.channel_moderate_enabled,
         }
 
 
@@ -87,6 +94,28 @@ def set_queue_command_enabled(enabled: bool) -> None:
     save_auth(data)
 
 
+def has_channel_moderate_scope() -> bool:
+    data = load_auth()
+    return bool(data and data.get("channel_moderate_scope"))
+
+
+def get_channel_moderate_enabled() -> bool:
+    data = load_auth()
+    return bool(
+        data
+        and data.get("channel_moderate_scope")
+        and data.get("channel_moderate_enabled")
+    )
+
+
+def set_channel_moderate_enabled(enabled: bool) -> None:
+    data = load_auth()
+    if not data:
+        return
+    data["channel_moderate_enabled"] = enabled
+    save_auth(data)
+
+
 def _require_client_id() -> str:
     if not TWITCH_CLIENT_ID:
         raise TwitchAuthError(
@@ -95,11 +124,16 @@ def _require_client_id() -> str:
     return TWITCH_CLIENT_ID
 
 
-def start_device_flow(*, include_chat_edit: bool = False) -> DeviceFlowStart:
+def start_device_flow(*, include_chat_edit: bool = False, include_channel_moderate: bool = False) -> DeviceFlowStart:
     client_id = _require_client_id()
     scopes = list(TWITCH_SCOPES)
     if include_chat_edit:
         scopes.append(TWITCH_CHAT_EDIT_SCOPE)
+    if include_channel_moderate:
+        if isinstance(TWITCH_CHANNEL_MODERATE_SCOPE, list):
+            scopes.extend(TWITCH_CHANNEL_MODERATE_SCOPE)
+        else:
+            scopes.append(TWITCH_CHANNEL_MODERATE_SCOPE)
     response = requests.post(
         TWITCH_DEVICE_URL,
         data={
@@ -202,6 +236,7 @@ def session_from_token(
     token_data: dict,
     *,
     chat_edit_scope: bool = False,
+    channel_moderate_scope: bool = False,
 ) -> TwitchSession:
     user = fetch_user(token_data["access_token"])
     session = TwitchSession(
@@ -212,6 +247,8 @@ def session_from_token(
         user_id=user["id"],
         chat_edit_scope=chat_edit_scope,
         queue_command_enabled=chat_edit_scope,
+        channel_moderate_scope=channel_moderate_scope,
+        channel_moderate_enabled=channel_moderate_scope,
     )
     save_auth(session.to_auth_dict())
     return session
@@ -223,6 +260,7 @@ def complete_device_login(
     *,
     expires_in: int | None = None,
     chat_edit_scope: bool = False,
+    channel_moderate_scope: bool = False,
     on_pending: Callable[[int], None] | None = None,
 ) -> TwitchSession:
     token_data = poll_device_token(
@@ -231,7 +269,77 @@ def complete_device_login(
         expires_in=expires_in,
         on_pending=on_pending,
     )
-    return session_from_token(token_data, chat_edit_scope=chat_edit_scope)
+    return session_from_token(
+        token_data,
+        chat_edit_scope=chat_edit_scope,
+        channel_moderate_scope=channel_moderate_scope,
+    )
+
+
+def ban_twitch_user(session: TwitchSession, target_username: str) -> str | None:
+    """
+    Bans a Twitch user.
+    Returns None on success, or a string describing the error on failure.
+    """
+    client_id = _require_client_id()
+    
+    # 1. Get the user ID of the target user
+    try:
+        response = requests.get(
+            TWITCH_USERS_URL,
+            headers={
+                "Authorization": f"Bearer {session.access_token}",
+                "Client-Id": client_id,
+            },
+            params={"login": target_username},
+            timeout=15,
+        )
+        if response.status_code == 401:
+            return "Unauthorized (token might be expired or invalid)"
+        response.raise_for_status()
+        data = response.json().get("data", [])
+        if not data:
+            return f"User '{target_username}' not found on Twitch"
+        target_user_id = data[0]["id"]
+    except Exception as exc:
+        return f"Failed to retrieve User ID for {target_username}: {exc}"
+
+    # 2. Perform the ban
+    ban_url = "https://api.twitch.tv/helix/moderation/bans"
+    headers = {
+        "Authorization": f"Bearer {session.access_token}",
+        "Client-Id": client_id,
+        "Content-Type": "application/json",
+    }
+    params = {
+        "broadcaster_id": session.user_id,
+        "moderator_id": session.user_id,
+    }
+    body = {
+        "data": {
+            "user_id": target_user_id,
+            "reason": "Banned from GD Level Request App",
+        }
+    }
+    try:
+        response = requests.post(
+            ban_url,
+            headers=headers,
+            params=params,
+            json=body,
+            timeout=15,
+        )
+        if response.status_code in (200, 201):
+            return None # Success
+        else:
+            try:
+                err_data = response.json()
+                msg = err_data.get("message", response.text)
+            except Exception:
+                msg = response.text
+            return f"Twitch API error: {msg}"
+    except Exception as exc:
+        return f"Failed to perform ban request: {exc}"
 
 
 def load_session() -> TwitchSession | None:

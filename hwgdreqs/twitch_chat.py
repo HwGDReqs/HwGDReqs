@@ -6,13 +6,14 @@ import threading
 
 from PySide6.QtCore import QObject, Signal
 
-from hwgdreqs.config import LEVEL_ID_PATTERN, TWITCH_IRC_HOST, TWITCH_IRC_PORT
+from hwgdreqs.config import LEVEL_ID_PATTERN, COMMA_LEVEL_ID_PATTERN, TWITCH_IRC_HOST, TWITCH_IRC_PORT
 from hwgdreqs.gdbrowser import fetch_level
 from hwgdreqs.logging_service import get_logger
 from hwgdreqs.queue_manager import QueueManager
 from hwgdreqs.twitch_auth import TwitchSession
 
 LEVEL_RE = re.compile(LEVEL_ID_PATTERN)
+COMMA_LEVEL_RE = re.compile(COMMA_LEVEL_ID_PATTERN)
 logger = get_logger()
 
 
@@ -136,9 +137,25 @@ class TwitchChatWorker(QObject):
             pass
 
     def _scan_for_levels(self, requester: str, message: str) -> None:
-        for level_id in LEVEL_RE.findall(message):
-            self.level_detected.emit(requester, level_id)
-            self._enqueue_level(requester, level_id, message)
+        matches = []
+        for m in LEVEL_RE.finditer(message):
+            matches.append((m.start(), m.group(1)))
+        for m in COMMA_LEVEL_RE.finditer(message):
+            matches.append((m.start(), m.group(1).replace(",", "")))
+
+        matches.sort(key=lambda x: x[0])
+        
+        level_ids = []
+        for _, lid in matches:
+            if lid not in level_ids:
+                level_ids.append(lid)
+
+        if level_ids:
+            if not self._queue.check_and_update_cooldown(requester):
+                return
+            for level_id in level_ids:
+                self.level_detected.emit(requester, level_id)
+                self._enqueue_level(requester, level_id, message)
 
     def _handle_commands(self, requester: str, message: str) -> bool:
 

@@ -32,6 +32,9 @@ from hwgdreqs.twitch_auth import (
     has_chat_edit_scope,
     load_session,
     set_queue_command_enabled,
+    has_channel_moderate_scope,
+    get_channel_moderate_enabled,
+    set_channel_moderate_enabled,
 )
 from hwgdreqs.youtube_auth import load_youtube_session, save_youtube_session, clear_youtube_auth, YoutubeSession
 
@@ -147,10 +150,22 @@ class GeneralTab(QWidget):
         max_layout.addStretch()
         layout.addLayout(max_layout)
 
+        cooldown_layout = QHBoxLayout()
+        cooldown_layout.addWidget(QLabel("Request cooldown (seconds):"))
+        self._cooldown_spinbox = QSpinBox()
+        self._cooldown_spinbox.setRange(0, 9999)
+        self._cooldown_spinbox.setValue(queue.requester_cooldown)
+        self._cooldown_spinbox.setSpecialValueText("Unlimited")
+        self._cooldown_spinbox.setToolTip("Seconds to wait before a requester can submit another level (0 = unlimited)")
+        cooldown_layout.addWidget(self._cooldown_spinbox)
+        cooldown_layout.addStretch()
+        layout.addLayout(cooldown_layout)
+
         layout.addStretch()
 
     def apply(self) -> None:
         self._queue.thumbnail_cache_size = self._thumb_cache_spinbox.value()
+        self._queue.requester_cooldown = self._cooldown_spinbox.value()
 
 
 class CommandsTab(QWidget):
@@ -642,6 +657,7 @@ class SettingsDialog(QDialog):
 
         self._twitch_session = load_session()
         self._queue_command_cb = None
+        self._channel_moderate_cb = None
 
         if self._twitch_session:
             twitch_layout.addWidget(
@@ -658,6 +674,14 @@ class SettingsDialog(QDialog):
             self._queue_command_cb.toggled.connect(self._on_queue_command_toggled)
             twitch_layout.addWidget(self._queue_command_cb)
 
+            self._has_channel_moderate_scope = has_channel_moderate_scope()
+            self._channel_moderate_cb = QCheckBox(
+                "want to moderate chat to ban a requester from the app?(eg they requested a bad level)"
+            )
+            self._channel_moderate_cb.setChecked(get_channel_moderate_enabled())
+            self._channel_moderate_cb.toggled.connect(self._on_channel_moderate_toggled)
+            twitch_layout.addWidget(self._channel_moderate_cb)
+
             logout_btn = QPushButton("Log Out from Twitch")
             logout_btn.clicked.connect(self._logout)
             twitch_layout.addWidget(logout_btn)
@@ -671,10 +695,16 @@ class SettingsDialog(QDialog):
             )
             twitch_layout.addWidget(self._login_queue_command_cb)
 
+            self._login_channel_moderate_cb = QCheckBox(
+                "want to moderate chat to ban a requester from the app?(eg they requested a bad level)"
+            )
+            twitch_layout.addWidget(self._login_channel_moderate_cb)
+
             login_btn = QPushButton("Login with Twitch")
             login_btn.clicked.connect(self._login_twitch)
             twitch_layout.addWidget(login_btn)
             self._has_chat_edit_scope = False
+            self._has_channel_moderate_scope = False
 
         twitch_layout.addStretch()
         tabs.addTab(twitch_tab, "Twitch")
@@ -760,12 +790,26 @@ class SettingsDialog(QDialog):
         set_queue_command_enabled(checked)
         self.queue_command_changed.emit(checked)
 
+    def _on_channel_moderate_toggled(self, checked: bool) -> None:
+        if self._channel_moderate_cb is None:
+            return
+        if checked and not self._has_channel_moderate_scope:
+            self._channel_moderate_cb.blockSignals(True)
+            self._channel_moderate_cb.setChecked(False)
+            self._channel_moderate_cb.blockSignals(False)
+            QMessageBox.information(self, "Twitch", "You need to re-login")
+            return
+        set_channel_moderate_enabled(checked)
+
     def _login_twitch(self) -> None:
         include_chat_edit = self._login_queue_command_cb.isChecked()
+        include_channel_moderate = self._login_channel_moderate_cb.isChecked()
         dialog = TwitchLoginDialog(
             self,
             include_chat_edit=include_chat_edit,
+            include_channel_moderate=include_channel_moderate,
             hide_queue_checkbox=True,
+            hide_moderate_checkbox=True,
         )
         if dialog.exec() != QDialog.DialogCode.Accepted or not dialog.session:
             return

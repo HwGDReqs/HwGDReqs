@@ -48,6 +48,7 @@ class QueueData:
     no_disliked: bool = False
     max_levels_per_requester: int = 0
     thumbnail_cache_size: int = 25
+    requester_cooldown: int = 0
     requester_level_counts: dict[str, int] = field(default_factory=dict)
     blacklist_timestamps: dict[str, dict[str, float]] = field(default_factory=lambda: {
         "levels": {},
@@ -62,6 +63,7 @@ class QueueManager(QObject):
     def __init__(self) -> None:
         super().__init__()
         self._data = QueueData()
+        self._requester_last_request_time: dict[str, float] = {}
         self.load()
 
     def add_listener(self, callback: Callable[[], None]) -> None:
@@ -140,6 +142,27 @@ class QueueManager(QObject):
         self.save()
         self._notify()
 
+    @property
+    def requester_cooldown(self) -> int:
+        return self._data.requester_cooldown
+
+    @requester_cooldown.setter
+    def requester_cooldown(self, value: int) -> None:
+        self._data.requester_cooldown = int(value)
+        self.save()
+        self._notify()
+
+    def check_and_update_cooldown(self, requester: str) -> bool:
+        """Returns True if the requester is NOT on cooldown (and updates their last request time), False otherwise."""
+        if self._data.requester_cooldown <= 0:
+            return True
+        now = time.time()
+        last_time = self._requester_last_request_time.get(requester.lower(), 0.0)
+        if now - last_time < self._data.requester_cooldown:
+            return False
+        self._requester_last_request_time[requester.lower()] = now
+        return True
+
     def get_requester_level_count(self, requester: str) -> int:
         return self._data.requester_level_counts.get(requester.lower(), 0)
 
@@ -202,6 +225,7 @@ class QueueManager(QObject):
             no_disliked=bool(raw.get("no_disliked", False)),
             max_levels_per_requester=int(raw.get("max_levels_per_requester", 0)),
             thumbnail_cache_size=int(raw.get("thumbnail_cache_size", 25)),
+            requester_cooldown=int(raw.get("requester_cooldown", 0)),
         )
 
         # Populate missing timestamps
@@ -235,6 +259,7 @@ class QueueManager(QObject):
             "no_disliked": self._data.no_disliked,
             "max_levels_per_requester": self._data.max_levels_per_requester,
             "thumbnail_cache_size": self._data.thumbnail_cache_size,
+            "requester_cooldown": self._data.requester_cooldown,
             "blacklist_timestamps": self._data.blacklist_timestamps,
         }
         queue_file().write_text(json.dumps(payload, indent=2), encoding="utf-8")

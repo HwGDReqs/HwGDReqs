@@ -354,6 +354,7 @@ class MainWindow(QMainWindow):
         self._blacklist_level_btn = QPushButton("Blacklist Level")
         self._blacklist_sender_btn = QPushButton("Blacklist Sender")
         self._blacklist_author_btn = QPushButton("Blacklist Author")
+        self._ban_requester_btn = QPushButton("Ban Requester")
         self._clear_queue_btn = QPushButton("Clear Queue")
 
         for btn in (
@@ -362,9 +363,12 @@ class MainWindow(QMainWindow):
             self._blacklist_level_btn,
             self._blacklist_sender_btn,
             self._blacklist_author_btn,
+            self._ban_requester_btn,
         ):
             btn.setEnabled(False)
             actions.addWidget(btn)
+        
+        self._ban_requester_btn.hide()
         
         actions.addWidget(self._clear_queue_btn)
         self._stats_btn = QPushButton("Statistics")
@@ -376,6 +380,7 @@ class MainWindow(QMainWindow):
         self._blacklist_level_btn.clicked.connect(self._blacklist_level)
         self._blacklist_sender_btn.clicked.connect(self._blacklist_sender)
         self._blacklist_author_btn.clicked.connect(self._blacklist_author)
+        self._ban_requester_btn.clicked.connect(self._ban_requester)
         self._clear_queue_btn.clicked.connect(self._queue.clear_queue)
 
         root.addLayout(actions)
@@ -600,8 +605,13 @@ class MainWindow(QMainWindow):
         self._set_action_buttons_enabled(entry is not None)
         if entry:
             self._update_details(entry)
+            if entry.platform == "twitch":
+                self._ban_requester_btn.show()
+            else:
+                self._ban_requester_btn.hide()
         else:
             self._clear_details()
+            self._ban_requester_btn.hide()
 
     def _update_details(self, entry: LevelEntry) -> None:
         self._name_label.setText(entry.name)
@@ -700,6 +710,7 @@ class MainWindow(QMainWindow):
             self._blacklist_level_btn,
             self._blacklist_sender_btn,
             self._blacklist_author_btn,
+            self._ban_requester_btn,
         ):
             btn.setEnabled(enabled)
 
@@ -733,6 +744,49 @@ class MainWindow(QMainWindow):
         if not entry:
             return
         self._queue.blacklist_author(entry.author)
+
+    def _ban_requester(self) -> None:
+        entry = self._selected_entry()
+        if not entry or entry.platform != "twitch":
+            return
+
+        session = self._session
+        if not session:
+            QMessageBox.warning(self, "Ban Requester", "No active Twitch session found.")
+            return
+
+        if entry.requester.lower() == session.login.lower():
+            QMessageBox.warning(self, "Ban Requester Failed", "SON you cant ban yourself😭")
+            return
+
+        from hwgdreqs.twitch_auth import get_channel_moderate_enabled, ban_twitch_user
+        if not get_channel_moderate_enabled():
+            QMessageBox.warning(
+                self,
+                "Ban Requester",
+                "You must enable the option 'want to moderate chat to ban a requester...' in Twitch settings (and log in with it) to use this feature."
+            )
+            return
+
+        reply = QMessageBox.question(
+            self,
+            "Ban Requester",
+            f"Are you sure you want to ban '{entry.requester}' from your Twitch channel?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        QGuiApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            error = ban_twitch_user(session, entry.requester)
+        finally:
+            QGuiApplication.restoreOverrideCursor()
+
+        if error:
+            QMessageBox.warning(self, "Ban Requester Failed", f"Could not ban {entry.requester}:\n{error}")
+        else:
+            QMessageBox.information(self, "Ban Requester", f"Successfully banned '{entry.requester}' on Twitch.")
 
     def _open_settings(self) -> None:
         dialog = SettingsDialog(

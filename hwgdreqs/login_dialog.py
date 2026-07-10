@@ -123,17 +123,21 @@ class TwitchLoginDialog(QDialog):
         parent=None,
         *,
         include_chat_edit: bool = False,
+        include_channel_moderate: bool = False,
         hide_queue_checkbox: bool = False,
+        hide_moderate_checkbox: bool = False,
     ) -> None:
         super().__init__(parent)
         self.setWindowTitle("Twitch Login")
         self.setModal(True)
-        self.setMinimumSize(420, 260)
+        self.setMinimumSize(420, 280)
         self._session: TwitchSession | None = None
         self._worker: DeviceLoginWorker | None = None
         self._verification_uri = "https://www.twitch.tv/activate"
         self._include_chat_edit = include_chat_edit
+        self._include_channel_moderate = include_channel_moderate
         self._queue_command_cb: QCheckBox | None = None
+        self._channel_moderate_cb: QCheckBox | None = None
 
         layout = QVBoxLayout(self)
 
@@ -169,6 +173,13 @@ class TwitchLoginDialog(QDialog):
             self._queue_command_cb.setChecked(include_chat_edit)
             layout.addWidget(self._queue_command_cb)
 
+        if not hide_moderate_checkbox:
+            self._channel_moderate_cb = QCheckBox(
+                "want to moderate chat to ban a requester from the app?(eg they requested a bad level)"
+            )
+            self._channel_moderate_cb.setChecked(include_channel_moderate)
+            layout.addWidget(self._channel_moderate_cb)
+
         button_row = QHBoxLayout()
         self._login_btn = QPushButton("Start Twitch Login")
         self._login_btn.clicked.connect(self._start_login)
@@ -191,15 +202,23 @@ class TwitchLoginDialog(QDialog):
             if self._queue_command_cb is not None
             else self._include_chat_edit
         )
+        include_channel_moderate = (
+            self._channel_moderate_cb.isChecked()
+            if self._channel_moderate_cb is not None
+            else self._include_channel_moderate
+        )
         self._login_btn.setEnabled(False)
         self._open_btn.setEnabled(False)
         if self._queue_command_cb is not None:
             self._queue_command_cb.setEnabled(False)
+        if self._channel_moderate_cb is not None:
+            self._channel_moderate_cb.setEnabled(False)
         self._code_label.setText(" ")
         self._status.setText("Starting device login...")
         self._worker = DeviceLoginWorker(
             self,
             include_chat_edit=include_chat_edit,
+            include_channel_moderate=include_channel_moderate,
         )
         self._worker.started_flow.connect(self._on_flow_started)
         self._worker.auth_status.connect(self._status.setText)
@@ -228,6 +247,8 @@ class TwitchLoginDialog(QDialog):
         self._open_btn.setEnabled(False)
         if self._queue_command_cb is not None:
             self._queue_command_cb.setEnabled(True)
+        if self._channel_moderate_cb is not None:
+            self._channel_moderate_cb.setEnabled(True)
         self._code_label.setText(" ")
         self._status.setText(message)
         QMessageBox.warning(self, "Twitch Login", message)
