@@ -55,7 +55,7 @@ def _make_handler(queue: QueueManager, session: TwitchSession | None = None):
 
         def _find_entry(self, level_id: str):
             for entry in queue.levels:
-                if entry.id == level_id:
+                if str(entry.id) == level_id:
                     return entry
             return None
 
