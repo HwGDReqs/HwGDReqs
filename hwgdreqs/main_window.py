@@ -468,6 +468,7 @@ class MainWindow(QMainWindow):
 
     def _apply_session(self, session: TwitchSession | None) -> None:
         self._session = session
+        self._api_server.set_session(session)
         self._youtube_session = load_youtube_session()
         self._start_chat(session)
 
@@ -560,6 +561,7 @@ class MainWindow(QMainWindow):
         self._stop_chat()
         if not self.relogin("Twitch session expired. Log in again..."):
             self._session = None
+            self._api_server.set_session(None)
             if self._youtube_session:
                 self._streamer_label.setText(f"YouTube: {self._youtube_session.username}")
             else:
@@ -811,6 +813,7 @@ class MainWindow(QMainWindow):
     def _on_logged_out(self) -> None:
         self._stop_chat()
         self._session = None
+        self._api_server.set_session(None)
         self._streamer_label.setText("Not connected to Twitch")
         if not self.relogin("Logged out. Log in again to reconnect chat."):
             self.statusBar().showMessage("Not connected to Twitch.")

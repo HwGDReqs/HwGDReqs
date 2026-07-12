@@ -7,9 +7,10 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 from hwgdreqs.queue_manager import QueueManager
+from hwgdreqs.twitch_auth import TwitchSession, get_channel_moderate_enabled, ban_twitch_user
 
 
-def _make_handler(queue: QueueManager):
+def _make_handler(queue: QueueManager, session: TwitchSession | None = None):
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, format: str, *args) -> None:
             return
@@ -111,7 +112,7 @@ def _make_handler(queue: QueueManager):
                 else:
                     self._send_json({"ok": False, "error": "add_failed"}, status=400)
                 return
-            if path in ("/delete", "/banauthor", "/banrequester", "/blacklistlevel", "/clear"):
+            if path in ("/delete", "/banauthor", "/banrequester", "/blacklistlevel", "/clear", "/bantwitch"):
                 params = self._params()
                 level_id = params.get("id") or params.get("level_id") or ""
 
@@ -153,6 +154,30 @@ def _make_handler(queue: QueueManager):
                         return
                     queue.blacklist_level(level_id)
                     self._send_json({"ok": True})
+                    return
+
+                if path == "/bantwitch":
+                    if not level_id:
+                        self._send_json({"ok": False, "error": "missing_id"}, status=400)
+                        return
+                    entry = self._find_entry(level_id)
+                    if not entry:
+                        self._send_json({"ok": False, "error": "not_found"}, status=404)
+                        return
+                    if not session:
+                        self._send_json({"ok": False, "error": "no_twitch_session"}, status=400)
+                        return
+                    if not get_channel_moderate_enabled():
+                        self._send_json({"ok": False, "error": "moderation_not_enabled"}, status=400)
+                        return
+                    if entry.requester.lower() == session.login.lower():
+                        self._send_json({"ok": False, "error": "cannot_ban_self"}, status=400)
+                        return
+                    error = ban_twitch_user(session, entry.requester)
+                    if error:
+                        self._send_json({"ok": False, "error": error}, status=400)
+                    else:
+                        self._send_json({"ok": True})
                     return
 
                 queue.clear_queue()
@@ -205,6 +230,30 @@ def _make_handler(queue: QueueManager):
                 self._send_json({"ok": True})
                 return
 
+            if path == "/bantwitch":
+                if not level_id:
+                    self._send_json({"ok": False, "error": "missing_id"}, status=400)
+                    return
+                entry = self._find_entry(level_id)
+                if not entry:
+                    self._send_json({"ok": False, "error": "not_found"}, status=404)
+                    return
+                if not session:
+                    self._send_json({"ok": False, "error": "no_twitch_session"}, status=400)
+                    return
+                if not get_channel_moderate_enabled():
+                    self._send_json({"ok": False, "error": "moderation_not_enabled"}, status=400)
+                    return
+                if entry.requester.lower() == session.login.lower():
+                    self._send_json({"ok": False, "error": "cannot_ban_self"}, status=400)
+                    return
+                error = ban_twitch_user(session, entry.requester)
+                if error:
+                    self._send_json({"ok": False, "error": error}, status=400)
+                else:
+                    self._send_json({"ok": True})
+                return
+
             if path == "/clear":
                 queue.clear_queue()
                 self._send_json({"ok": True})
@@ -222,16 +271,23 @@ class ApiServer:
         self._port = port
         self._httpd: ThreadingHTTPServer | None = None
         self._thread: threading.Thread | None = None
+        self._session: TwitchSession | None = None
 
     @property
     def port(self) -> int:
         return self._port
 
+    def set_session(self, session: TwitchSession | None) -> None:
+        self._session = session
+        if self._httpd:
+            self.stop()
+            self.start()
+
     def start(self) -> bool:
         if self._thread and self._thread.is_alive():
             return True
 
-        handler = _make_handler(self._queue)
+        handler = _make_handler(self._queue, self._session)
         try:
             self._httpd = ThreadingHTTPServer((self._host, self._port), handler)
         except OSError:
