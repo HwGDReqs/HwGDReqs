@@ -382,7 +382,6 @@ class UpdateCheckerWorker(QThread):
             data = response.json()
             tag_name = data.get("tag_name", "").strip()
             
-            # Use the explicit latest download link provided by the user
             download_url = "https://github.com/HwGDReqs/HwGDReqs/releases/latest/download/hwgdreqs-windows-portable.zip"
             
             self.finished.emit(tag_name, download_url)
