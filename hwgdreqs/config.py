@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 APP_NAME = "HwGDReqs"
-APP_VERSION = "0.7.0"
+APP_VERSION = "0.8.0"
 
 TWITCH_CLIENT_ID = "hq65d75rdxry2cfjgemvydqp2vfr84"
 TWITCH_SCOPES = ["chat:read", "user:read:email"]
@@ -37,11 +37,31 @@ def exec_dir() -> Path:
     return Path(__file__).resolve().parent.parent
 
 
+import sys
+import shutil
+
 def data_dir() -> Path:
-    base = Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming"))
-    path = base / APP_NAME
-    path.mkdir(parents=True, exist_ok=True)
-    return path
+    if sys.platform == "win32":
+        # Windows
+        base = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
+        new_path = base / APP_NAME
+        
+        # old data chek
+        old_base = Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming"))
+        old_path = old_base / APP_NAME
+        
+        if old_path.exists() and not new_path.exists():
+            shutil.copytree(old_path, new_path)
+            # bye old data :3
+            shutil.rmtree(old_path)
+        
+        new_path.mkdir(parents=True, exist_ok=True)
+        return new_path
+    else:
+        # Linux
+        base = Path.home() / ".config" / APP_NAME
+        base.mkdir(parents=True, exist_ok=True)
+        return base
 
 
 def asset_path(name: str) -> Path:

@@ -293,6 +293,58 @@ class LevelHistoryTab(QWidget):
         entry = item.data(Qt.ItemDataRole.UserRole)
         QGuiApplication.clipboard().setText(entry.id)
 
+class ApiTab(QWidget):
+    def __init__(self, queue: QueueManager, parent=None) -> None:
+        super().__init__(parent)
+        self._queue = queue
+        layout = QVBoxLayout(self)
+        
+        layout.addWidget(QLabel("API Settings"))
+        
+        # local API port
+        local_port_layout = QHBoxLayout()
+        local_port_layout.addWidget(QLabel("Local API port:"))
+        self._local_port_spin = QSpinBox()
+        self._local_port_spin.setRange(1, 65535)
+        self._local_port_spin.setValue(queue.api_local_port)
+        local_port_layout.addWidget(self._local_port_spin)
+        local_port_layout.addStretch()
+        layout.addLayout(local_port_layout)
+        
+        layout.addSpacing(10)
+        
+        # host to local network toggle
+        self._host_network_check = QCheckBox("Host to local network")
+        self._host_network_check.setChecked(queue.api_host_to_network)
+        self._host_network_check.toggled.connect(self._on_host_network_toggled)
+        layout.addWidget(self._host_network_check)
+        
+        layout.addSpacing(10)
+        
+        # network API port
+        network_port_layout = QHBoxLayout()
+        network_port_layout.addWidget(QLabel("Network API port:"))
+        self._network_port_spin = QSpinBox()
+        self._network_port_spin.setRange(1, 65535)
+        self._network_port_spin.setValue(queue.api_network_port)
+        network_port_layout.addWidget(self._network_port_spin)
+        network_port_layout.addStretch()
+        self._network_port_widget = QWidget()
+        self._network_port_widget.setLayout(network_port_layout)
+        self._network_port_widget.setEnabled(queue.api_host_to_network)
+        layout.addWidget(self._network_port_widget)
+        
+        layout.addStretch()
+        
+    def _on_host_network_toggled(self, checked):
+        self._network_port_widget.setEnabled(checked)
+        
+    def apply(self):
+        self._queue.api_local_port = self._local_port_spin.value()
+        self._queue.api_host_to_network = self._host_network_check.isChecked()
+        self._queue.api_network_port = self._network_port_spin.value()
+
+
 class InfoTab(QWidget):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -458,6 +510,7 @@ class UpdaterTab(QWidget):
         self._check_worker = None
         self._download_worker = None
         self._progress_dialog = None
+        self._is_linux = sys.platform.startswith('linux')
 
         layout = QVBoxLayout(self)
         layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -490,18 +543,25 @@ class UpdaterTab(QWidget):
         layout.addWidget(self._check_btn, alignment=Qt.AlignmentFlag.AlignCenter)
 
         layout.addStretch()
+        
+    def check_for_updates_on_startup(self):
+        self._check_for_updates(silent=True)
 
-    def _check_for_updates(self) -> None:
+    def _check_for_updates(self, silent=False) -> None:
         self._check_btn.setEnabled(False)
         self._status_label.setText("Checking for updates...")
         self._status_label.setStyleSheet("color: #007acc;")
 
         self._check_worker = UpdateCheckerWorker(self)
-        self._check_worker.finished.connect(self._on_check_finished)
-        self._check_worker.error.connect(self._on_check_error)
+        self._check_worker.finished.connect(
+            lambda tag, url: self._on_check_finished(tag, url, silent)
+        )
+        self._check_worker.error.connect(
+            lambda err: self._on_check_error(err, silent)
+        )
         self._check_worker.start()
 
-    def _on_check_finished(self, latest_version: str, download_url: str) -> None:
+    def _on_check_finished(self, latest_version: str, download_url: str, silent=False) -> None:
         self._check_btn.setEnabled(True)
         
         norm_latest = latest_version.strip().lower().lstrip('v')
@@ -510,48 +570,62 @@ class UpdaterTab(QWidget):
         if norm_latest != norm_current:
             self._status_label.setText(f"Update available: {latest_version}")
             self._status_label.setStyleSheet("color: #4caf50; font-weight: bold;")
-
-            reply = QMessageBox.question(
-                self,
-                "Update Available",
-                f"There is an update ({latest_version}), want to download and install?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-            )
-            if reply == QMessageBox.StandardButton.Yes:
-                self._download_update(download_url)
+            
+            if self._is_linux:
+                reply = QMessageBox.question(
+                    self,
+                    "Update Available",
+                    f"There is an update ({latest_version}). To update, please run:\n\ncurl https://hwgdreqs.github.io/install.sh | bash\n\nWould you like to copy this command to clipboard?",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+                )
+                if reply == QMessageBox.StandardButton.Yes:
+                    QGuiApplication.clipboard().setText("curl https://hwgdreqs.github.io/install.sh | bash")
+                    QMessageBox.information(self, "Copied!", "Command copied to clipboard!")
+            else:
+                reply = QMessageBox.question(
+                    self,
+                    "Update Available",
+                    f"There is an update ({latest_version}), want to download and install?",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+                )
+                if reply == QMessageBox.StandardButton.Yes:
+                    self._download_update(download_url)
         else:
             self._status_label.setText("You are running the latest version.")
             self._status_label.setStyleSheet("color: green;")
-            QMessageBox.information(
-                self,
-                "Up to Date",
-                "You are already using the latest version of HwGDReqs."
-            )
+            if not silent:
+                QMessageBox.information(
+                    self,
+                    "Up to Date",
+                    "You are already using the latest version of HwGDReqs."
+                )
 
-    def _on_check_error(self, error_msg: str) -> None:
+    def _on_check_error(self, error_msg: str, silent=False) -> None:
         self._check_btn.setEnabled(True)
         self._status_label.setText("Failed to check for updates.")
         self._status_label.setStyleSheet("color: red;")
-        QMessageBox.warning(
-            self,
-            "Check Failed",
-            f"Could not check for updates:\n{error_msg}"
-        )
+        if not silent:
+            QMessageBox.warning(
+                self,
+                "Check Failed",
+                f"Could not check for updates:\n{error_msg}"
+            )
 
     def _download_update(self, download_url: str) -> None:
         self._check_btn.setEnabled(False)
         self._status_label.setText("Downloading update...")
         self._status_label.setStyleSheet("color: #007acc;")
 
-        tmp_dir = exec_dir() / "tmp"
-        dest_file = tmp_dir / "hwgdreqs-windows-portable.zip"
+        import tempfile
+        tmp_dir = tempfile.gettempdir()
+        dest_file = os.path.join(tmp_dir, "hwgdreqs-windows-portable.zip")
 
         self._progress_dialog = QProgressDialog("Downloading update...", "Cancel", 0, 100, self)
         self._progress_dialog.setWindowModality(Qt.WindowModality.WindowModal)
         self._progress_dialog.setMinimumDuration(0)
         self._progress_dialog.setValue(0)
 
-        self._download_worker = UpdateDownloadWorker(download_url, str(dest_file), self)
+        self._download_worker = UpdateDownloadWorker(download_url, dest_file, self)
         self._download_worker.progress.connect(self._progress_dialog.setValue)
         self._download_worker.finished.connect(self._on_download_finished)
         self._download_worker.error.connect(self._on_download_error)
@@ -592,7 +666,7 @@ class UpdaterTab(QWidget):
         )
 
     def _run_updater_and_exit(self) -> None:
-        updater_path = exec_dir() / "updater.bat"
+        updater_path = exec_dir() / "updater" / "updater.bat"
         try:
             subprocess.Popen([str(updater_path)], cwd=str(exec_dir()))
         except Exception:
@@ -741,6 +815,9 @@ class SettingsDialog(QDialog):
         youtube_layout.addStretch()
         tabs.addTab(youtube_tab, "YouTube")
 
+        self._api_tab = ApiTab(queue)
+        tabs.addTab(self._api_tab, "API")
+
         self._level_history_tab = LevelHistoryTab(queue)
         tabs.addTab(self._level_history_tab, "Level History")
 
@@ -769,6 +846,7 @@ class SettingsDialog(QDialog):
     def _on_close(self) -> None:
         self._general_tab.apply()
         self._filters_tab.apply_filters()
+        self._api_tab.apply()
         self._queue.max_levels_per_requester = self._general_tab._max_levels_spinbox.value()
         self.accept()
 

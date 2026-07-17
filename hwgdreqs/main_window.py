@@ -72,7 +72,7 @@ from hwgdreqs.twitch_auth import TwitchSession, get_queue_command_enabled, load_
 from hwgdreqs.twitch_chat import TwitchChatWorker
 from hwgdreqs.youtube_auth import load_youtube_session, save_youtube_session, YoutubeSession
 from hwgdreqs.youtube_chat import YoutubeChatWorker
-from hwgdreqs.config import asset_path
+from hwgdreqs.config import asset_path, exec_dir
 
 
 class DraggableListWidget(QListWidget):
@@ -249,6 +249,7 @@ class MainWindow(QMainWindow):
         self._thumbnail_cache: dict[str, QPixmap] = {}
         self._thumbnail_cache_order: list[str] = []
         self._api_server = ApiServer(queue)
+        self._check_update_worker = None
         
         # Load platform icons
         self._twitch_icon = QIcon(str(asset_path("twitch.svg")))
@@ -387,6 +388,7 @@ class MainWindow(QMainWindow):
 
         self.setStatusBar(QStatusBar())
         self._queue.add_listener(self.refresh_queue)
+        self._queue.add_listener(self._configure_api_server)
         self.refresh_queue()
         self._set_action_buttons_enabled(False)
 
@@ -396,11 +398,112 @@ class MainWindow(QMainWindow):
         
         self._delete_shortcut = QShortcut(QKeySequence(Qt.Key.Key_Delete), self)
         self._delete_shortcut.activated.connect(self._delete_selected)
-
+        
+        # conf and start API server
+        self._configure_api_server()
         self._api_server.start()
 
+    def _configure_api_server(self):
+        self._api_server.set_config(
+            self._queue.api_local_port,
+            self._queue.api_host_to_network,
+            self._queue.api_network_port
+        )
+        
+    def _check_for_updates_on_startup(self):
+        from hwgdreqs.settings_dialog import UpdateCheckerWorker, APP_VERSION
+        import sys
+        
+        self._check_update_worker = UpdateCheckerWorker(self)
+        
+        def on_finished(latest_version, download_url):
+            norm_latest = latest_version.strip().lower().lstrip('v')
+            norm_current = APP_VERSION.strip().lower().lstrip('v')
+            
+            if norm_latest != norm_current:
+                if sys.platform.startswith('linux'):
+                    reply = QMessageBox.question(
+                        self,
+                        "Update Available",
+                        f"There is an update ({latest_version}). To update, please run:\n\ncurl https://hwgdreqs.github.io/install.sh | bash\n\nWould you like to copy this command to clipboard?",
+                        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+                    )
+                    if reply == QMessageBox.StandardButton.Yes:
+                        QGuiApplication.clipboard().setText("curl https://hwgdreqs.github.io/install.sh | bash")
+                        QMessageBox.information(self, "Copied!", "Command copied to clipboard!")
+                else:
+                    from hwgdreqs.settings_dialog import UpdateDownloadWorker, tempfile, QProgressDialog, Qt, QTimer, subprocess, QApplication
+                    reply = QMessageBox.question(
+                        self,
+                        "Update Available",
+                        f"There is an update ({latest_version}), want to download and install?",
+                        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+                    )
+                    if reply == QMessageBox.StandardButton.Yes:
+                        self._download_update_for_startup(download_url)
+        
+        self._check_update_worker.finished.connect(on_finished)
+        self._check_update_worker.start()
+        
+    def _download_update_for_startup(self, download_url):
+        import tempfile
+        import os
+        from hwgdreqs.settings_dialog import UpdateDownloadWorker
+        import subprocess
+        
+        tmp_dir = tempfile.gettempdir()
+        dest_file = os.path.join(tmp_dir, "hwgdreqs-windows-portable.zip")
+        
+        progress_dialog = QProgressDialog("Downloading update...", "Cancel", 0, 100, self)
+        progress_dialog.setWindowModality(Qt.WindowModality.WindowModal)
+        progress_dialog.setMinimumDuration(0)
+        progress_dialog.setValue(0)
+        
+        download_worker = UpdateDownloadWorker(download_url, dest_file, self)
+        
+        def cancel_download():
+            download_worker.cancel()
+            download_worker.wait()
+        
+        progress_dialog.canceled.connect(cancel_download)
+        download_worker.progress.connect(progress_dialog.setValue)
+        
+        def on_download_finished():
+            progress_dialog.close()
+            
+            QMessageBox.information(self, "Download Complete!", "Download complete. Launching updater in 2 seconds...")
+            
+            def run_updater():
+                updater_path = exec_dir() / "updater" / "updater.bat"
+                try:
+                    subprocess.Popen([str(updater_path)], cwd=str(exec_dir()))
+                except Exception:
+                    pass
+                
+                QApplication.quit()
+                import sys
+                sys.exit(0)
+                
+            QTimer.singleShot(2000, run_updater)
+            
+        def on_download_error(error_msg):
+            progress_dialog.close()
+            QMessageBox.warning(
+                self,
+                "Download Failed",
+                f"An error occurred while downloading the update:\n{error_msg}"
+            )
+        
+        download_worker.finished.connect(on_download_finished)
+        download_worker.error.connect(on_download_error)
+        download_worker.start()
+        
     def startup(self, status_callback: Callable[[str], None] | None = None) -> bool:
-        return self._ensure_session(status_callback)
+        result = self._ensure_session(status_callback)
+        if result:
+            # check updates after a short delay
+            QTimer.singleShot(1000, self._check_for_updates_on_startup)
+        return result
 
     def relogin(self, status_message: str = "Log in to Twitch to continue.") -> bool:
         return self._ensure_session(self.statusBar().showMessage, status_message)

@@ -36,6 +36,8 @@ class LevelEntry:
     timestamp: float = 0.0
 
 
+import random
+
 @dataclass
 class QueueData:
     levels: list[LevelEntry] = field(default_factory=list)
@@ -55,6 +57,10 @@ class QueueData:
         "authors": {},
         "requesters": {}
     })
+    # API settings
+    api_local_port: int = 6767
+    api_host_to_network: bool = False
+    api_network_port: int = field(default_factory=lambda: random.randint(1024, 65535))
 
 
 class QueueManager(QObject):
@@ -226,6 +232,9 @@ class QueueManager(QObject):
             max_levels_per_requester=int(raw.get("max_levels_per_requester", 0)),
             thumbnail_cache_size=int(raw.get("thumbnail_cache_size", 25)),
             requester_cooldown=int(raw.get("requester_cooldown", 0)),
+            api_local_port=int(raw.get("api_local_port", 6767)),
+            api_host_to_network=bool(raw.get("api_host_to_network", False)),
+            api_network_port=int(raw.get("api_network_port", random.randint(1024, 65535))),
         )
 
         # Populate missing timestamps
@@ -261,8 +270,41 @@ class QueueManager(QObject):
             "thumbnail_cache_size": self._data.thumbnail_cache_size,
             "requester_cooldown": self._data.requester_cooldown,
             "blacklist_timestamps": self._data.blacklist_timestamps,
+            "api_local_port": self._data.api_local_port,
+            "api_host_to_network": self._data.api_host_to_network,
+            "api_network_port": self._data.api_network_port,
         }
         queue_file().write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        
+    @property
+    def api_local_port(self):
+        return self._data.api_local_port
+        
+    @api_local_port.setter
+    def api_local_port(self, value):
+        self._data.api_local_port = value
+        self.save()
+        self._notify()
+        
+    @property
+    def api_host_to_network(self):
+        return self._data.api_host_to_network
+        
+    @api_host_to_network.setter
+    def api_host_to_network(self, value):
+        self._data.api_host_to_network = value
+        self.save()
+        self._notify()
+        
+    @property
+    def api_network_port(self):
+        return self._data.api_network_port
+        
+    @api_network_port.setter
+    def api_network_port(self, value):
+        self._data.api_network_port = value
+        self.save()
+        self._notify()
 
     def add_level(
         self,

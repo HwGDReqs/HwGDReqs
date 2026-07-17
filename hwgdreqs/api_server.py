@@ -265,49 +265,83 @@ def _make_handler(queue: QueueManager, session: TwitchSession | None = None):
 
 
 class ApiServer:
-    def __init__(self, queue: QueueManager, host: str = "127.0.0.1", port: int = 6767) -> None:
+    def __init__(self, queue: QueueManager) -> None:
         self._queue = queue
-        self._host = host
-        self._port = port
-        self._httpd: ThreadingHTTPServer | None = None
-        self._thread: threading.Thread | None = None
+        self._local_httpd: ThreadingHTTPServer | None = None
+        self._local_thread: threading.Thread | None = None
+        self._network_httpd: ThreadingHTTPServer | None = None
+        self._network_thread: threading.Thread | None = None
         self._session: TwitchSession | None = None
+        self._local_port: int = 6767
+        self._host_to_network: bool = False
+        self._network_port: int = 0
 
-    @property
-    def port(self) -> int:
-        return self._port
-
-    def set_session(self, session: TwitchSession | None) -> None:
-        self._session = session
-        if self._httpd:
+    def set_config(self, local_port: int, host_to_network: bool, network_port: int) -> None:
+        restart = (self._local_port != local_port or \
+                  self._host_to_network != host_to_network or \
+                  self._network_port != network_port)
+        self._local_port = local_port
+        self._host_to_network = host_to_network
+        self._network_port = network_port
+        if restart:
             self.stop()
             self.start()
 
+    def set_session(self, session: TwitchSession | None) -> None:
+        self._session = session
+        self.stop()
+        self.start()
+
     def start(self) -> bool:
-        if self._thread and self._thread.is_alive():
-            return True
-
-        handler = _make_handler(self._queue, self._session)
-        try:
-            self._httpd = ThreadingHTTPServer((self._host, self._port), handler)
-        except OSError:
-            self._httpd = None
-            return False
-
-        self._thread = threading.Thread(target=self._httpd.serve_forever, daemon=True)
-        self._thread.start()
-        return True
+        success = False
+        # local server
+        if self._local_thread and self._local_thread.is_alive():
+            success = True
+        else:
+            handler = _make_handler(self._queue, self._session)
+            try:
+                self._local_httpd = ThreadingHTTPServer(("127.0.0.1", self._local_port), handler)
+                self._local_thread = threading.Thread(target=self._local_httpd.serve_forever, daemon=True)
+                self._local_thread.start()
+                success = True
+            except OSError:
+                pass
+        
+        # network server if on
+        if self._host_to_network:
+            if not (self._network_thread and self._network_thread.is_alive()):
+                handler = _make_handler(self._queue, self._session)
+                try:
+                    self._network_httpd = ThreadingHTTPServer(("0.0.0.0", self._network_port), handler)
+                    self._network_thread = threading.Thread(target=self._network_httpd.serve_forever, daemon=True)
+                    self._network_thread.start()
+                    success = True
+                except OSError:
+                    pass
+        
+        return success
 
     def stop(self) -> None:
-        httpd = self._httpd
-        if not httpd:
-            return
-        try:
-            httpd.shutdown()
-        except OSError:
-            pass
-        try:
-            httpd.server_close()
-        except OSError:
-            pass
-        self._httpd = None
+        # stop local server
+        if self._local_httpd:
+            try:
+                self._local_httpd.shutdown()
+            except OSError:
+                pass
+            try:
+                self._local_httpd.server_close()
+            except OSError:
+                pass
+            self._local_httpd = None
+            
+        # stop network server
+        if self._network_httpd:
+            try:
+                self._network_httpd.shutdown()
+            except OSError:
+                pass
+            try:
+                self._network_httpd.server_close()
+            except OSError:
+                pass
+            self._network_httpd = None
