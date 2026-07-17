@@ -4,6 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "hwgdreqs"
+version = "0.7.0"
 dynamic = ["version"]
 description = "A Geometry Dash level requests app for streamers"
 readme = "README.md"
@@ -43,7 +44,3 @@ hwgdreqs = "hwgdreqs.main:main"
 Homepage = "https://hwgdreqs.github.io"
 Issues = "https://github.com/HwGDReqs/HwGDReqs/issues"
 Source = "https://github.com/HwGDReqs/HwGDReqs"
-
-[tool.hatch.version]
-source = "file"
-path = "hwgdreqs/__init__.py"
