@@ -57,6 +57,11 @@ def data_dir() -> Path:
         
         new_path.mkdir(parents=True, exist_ok=True)
         return new_path
+    elif sys.platform == "darwin":
+        # macOS
+        base = Path.home() / "Library" / "Application Support" / APP_NAME
+        base.mkdir(parents=True, exist_ok=True)
+        return base
     else:
         # Linux
         base = Path.home() / ".config" / APP_NAME
@@ -104,3 +109,15 @@ def clear_auth() -> None:
     path = token_file()
     if path.exists():
         path.unlink()
+
+
+def get_local_ip() -> str:
+    """Get the local IPv4 address of the machine."""
+    import socket
+    try:
+        # dummy socket to a public server to find the local IP
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.connect(("8.8.8.8", 80))  # Doesn't need to actually connect
+            return s.getsockname()[0]
+    except Exception:
+        return "127.0.0.1"  # Fallback to localhost

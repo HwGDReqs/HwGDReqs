@@ -293,6 +293,9 @@ class LevelHistoryTab(QWidget):
         entry = item.data(Qt.ItemDataRole.UserRole)
         QGuiApplication.clipboard().setText(entry.id)
 
+from hwgdreqs.config import get_local_ip
+
+
 class ApiTab(QWidget):
     def __init__(self, queue: QueueManager, parent=None) -> None:
         super().__init__(parent)
@@ -307,9 +310,16 @@ class ApiTab(QWidget):
         self._local_port_spin = QSpinBox()
         self._local_port_spin.setRange(1, 65535)
         self._local_port_spin.setValue(queue.api_local_port)
+        self._local_port_spin.valueChanged.connect(self._update_urls)
         local_port_layout.addWidget(self._local_port_spin)
         local_port_layout.addStretch()
         layout.addLayout(local_port_layout)
+        
+        # Local API URL
+        self._local_url_label = QLabel()
+        self._local_url_label.setWordWrap(True)
+        self._local_url_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        layout.addWidget(self._local_url_label)
         
         layout.addSpacing(10)
         
@@ -319,6 +329,12 @@ class ApiTab(QWidget):
         self._host_network_check.toggled.connect(self._on_host_network_toggled)
         layout.addWidget(self._host_network_check)
         
+        # network API URL
+        self._network_url_label = QLabel()
+        self._network_url_label.setWordWrap(True)
+        self._network_url_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        layout.addWidget(self._network_url_label)
+        
         layout.addSpacing(10)
         
         # network API port
@@ -327,6 +343,7 @@ class ApiTab(QWidget):
         self._network_port_spin = QSpinBox()
         self._network_port_spin.setRange(1, 65535)
         self._network_port_spin.setValue(queue.api_network_port)
+        self._network_port_spin.valueChanged.connect(self._update_urls)
         network_port_layout.addWidget(self._network_port_spin)
         network_port_layout.addStretch()
         self._network_port_widget = QWidget()
@@ -336,8 +353,26 @@ class ApiTab(QWidget):
         
         layout.addStretch()
         
+        self._update_urls()
+        
+    def _update_urls(self):
+        # Update local URL
+        local_port = self._local_port_spin.value()
+        self._local_url_label.setText(f"Local API URL: http://127.0.0.1:{local_port}")
+        
+        # Update network URL
+        host_enabled = self._host_network_check.isChecked()
+        network_port = self._network_port_spin.value()
+        local_ip = get_local_ip()
+        if host_enabled:
+            self._network_url_label.setText(f"Network API URL: http://{local_ip}:{network_port}")
+            self._network_url_label.show()
+        else:
+            self._network_url_label.hide()
+        
     def _on_host_network_toggled(self, checked):
         self._network_port_widget.setEnabled(checked)
+        self._update_urls()
         
     def apply(self):
         self._queue.api_local_port = self._local_port_spin.value()
@@ -571,7 +606,16 @@ class UpdaterTab(QWidget):
             self._status_label.setText(f"Update available: {latest_version}")
             self._status_label.setStyleSheet("color: #4caf50; font-weight: bold;")
             
-            if self._is_linux:
+            if sys.platform == "win32":
+                reply = QMessageBox.question(
+                    self,
+                    "Update Available",
+                    f"There is an update ({latest_version}), want to download and install?",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+                )
+                if reply == QMessageBox.StandardButton.Yes:
+                    self._download_update(download_url)
+            elif sys.platform.startswith("linux"):
                 reply = QMessageBox.question(
                     self,
                     "Update Available",
@@ -582,14 +626,11 @@ class UpdaterTab(QWidget):
                     QGuiApplication.clipboard().setText("curl https://hwgdreqs.github.io/install.sh | bash")
                     QMessageBox.information(self, "Copied!", "Command copied to clipboard!")
             else:
-                reply = QMessageBox.question(
+                QMessageBox.information(
                     self,
                     "Update Available",
-                    f"There is an update ({latest_version}), want to download and install?",
-                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+                    f"There is an update ({latest_version}). Please update manually.\nIf you installed via pip, run:\n\npip install --upgrade hwgdreqs"
                 )
-                if reply == QMessageBox.StandardButton.Yes:
-                    self._download_update(download_url)
         else:
             self._status_label.setText("You are running the latest version.")
             self._status_label.setStyleSheet("color: green;")

@@ -421,7 +421,17 @@ class MainWindow(QMainWindow):
             norm_current = APP_VERSION.strip().lower().lstrip('v')
             
             if norm_latest != norm_current:
-                if sys.platform.startswith('linux'):
+                if sys.platform == "win32":
+                    from hwgdreqs.settings_dialog import UpdateDownloadWorker, tempfile, QProgressDialog, Qt, QTimer, subprocess, QApplication
+                    reply = QMessageBox.question(
+                        self,
+                        "Update Available",
+                        f"There is an update ({latest_version}), want to download and install?",
+                        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+                    )
+                    if reply == QMessageBox.StandardButton.Yes:
+                        self._download_update_for_startup(download_url)
+                elif sys.platform.startswith("linux"):
                     reply = QMessageBox.question(
                         self,
                         "Update Available",
@@ -432,15 +442,11 @@ class MainWindow(QMainWindow):
                         QGuiApplication.clipboard().setText("curl https://hwgdreqs.github.io/install.sh | bash")
                         QMessageBox.information(self, "Copied!", "Command copied to clipboard!")
                 else:
-                    from hwgdreqs.settings_dialog import UpdateDownloadWorker, tempfile, QProgressDialog, Qt, QTimer, subprocess, QApplication
-                    reply = QMessageBox.question(
+                    QMessageBox.information(
                         self,
                         "Update Available",
-                        f"There is an update ({latest_version}), want to download and install?",
-                        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+                        f"There is an update ({latest_version}). Please update manually.\nIf you installed via pip, run:\n\npip install --upgrade hwgdreqs"
                     )
-                    if reply == QMessageBox.StandardButton.Yes:
-                        self._download_update_for_startup(download_url)
         
         self._check_update_worker.finished.connect(on_finished)
         self._check_update_worker.start()
