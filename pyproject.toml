@@ -4,8 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "hwgdreqs"
-version = "0.7.0"
-dynamic = ["version"]
+version = "0.8.0"
 description = "A Geometry Dash level requests app for streamers"
 readme = "README.md"
 requires-python = ">=3.9"
