@@ -24,7 +24,6 @@ jobs:
     - name: pyinst.bat
       shell: cmd
       run: |
-        python -m pip install --force-reinstall pyinstaller requests yt-dlp pytchat PySide6 shiboken6
         python -m pip install -r requirements.txt
         python -m PyInstaller HwGDReqs.spec
     
