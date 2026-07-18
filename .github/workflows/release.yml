@@ -38,7 +38,7 @@ jobs:
       uses: Minionguyjpro/Inno-Setup-Action@v1.2.2
       with:
         path: inno.iss
-        options: /O+
+        options: /O+ /O"output"
     
     - name: upload asset to release
       shell: pwsh

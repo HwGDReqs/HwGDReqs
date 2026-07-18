@@ -9,7 +9,7 @@
 #define MyAppExeName "HwGDReqs.exe"
 
 [Setup]
-AppId={{08EF5909-2044-469E-BDE3-6DE680460E8E}
+AppId={08EF5909-2044-469E-BDE3-6DE680460E8E}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
@@ -24,6 +24,7 @@ DisableProgramGroupPage=yes
 LicenseFile=LICENSE
 PrivilegesRequiredOverridesAllowed=commandline dialog
 OutputBaseFilename=HwGDReqs-setup
+outputDir=output
 SetupIconFile=assets\logo.ico
 SolidCompression=yes
 WizardStyle=modern dynamic windows11
