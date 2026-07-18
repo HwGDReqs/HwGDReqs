@@ -9,7 +9,7 @@
 #define MyAppExeName "HwGDReqs.exe"
 
 [Setup]
-AppId={08EF5909-2044-469E-BDE3-6DE680460E8E}
+AppId={{08EF5909-2044-469E-BDE3-6DE680460E8E}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
