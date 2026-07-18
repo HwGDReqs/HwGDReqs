@@ -46,7 +46,22 @@ a = Analysis(
     noarchive=False,
     optimize=0,
 )
-a.binaries += collect_dynamic_libs('PySide6')
+
+import site
+for site_dir in site.getsitepackages():
+    pyside_path = os.path.join(site_dir, 'PySide6')
+    if os.path.exists(pyside_path):
+        # Add all DLLs from PySide6
+        for root, dirs, files in os.walk(pyside_path):
+            for file in files:
+                if file.endswith('.dll'):
+                    full_path = os.path.join(root, file)
+                    # Add as (source_path, dest_name, 'BINARY')
+                    a.binaries.append((full_path, os.path.basename(full_path), 'BINARY'))
+        break
+
+a.datas += collect_data_files('PySide6')
+
 a.datas += collect_data_files('PySide6')
 pyz = PYZ(a.pure)
 
