@@ -45,3 +45,9 @@ hwgdreqs = "hwgdreqs.main:main"
 Homepage = "https://hwgdreqs.github.io"
 Issues = "https://github.com/HwGDReqs/HwGDReqs/issues"
 Source = "https://github.com/HwGDReqs/HwGDReqs"
+
+[tool.hatch.build]
+include = [
+    "hwgdreqs/**/*.py",
+    "assets/**/*",
+]
