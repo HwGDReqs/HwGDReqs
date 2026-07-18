@@ -2,6 +2,11 @@ name: Windows Build and Release
 
 on:
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'release tag'
+        required: true
+        type: string
 
 jobs:
   build:
@@ -25,27 +30,11 @@ jobs:
       run: |
         Compress-Archive -Path dist/hwgdreqs/* -DestinationPath hwgdreqs-windows-portable.zip -Force
     
-    - name: get latest (pre)release
-      id: get_latest_release
-      shell: pwsh
-      run: |
-        $releases = gh api repos/$env:GITHUB_REPOSITORY/releases --paginate
-        if ($releases.Count -gt 0) {
-          $latest = $releases[0]
-          echo "RELEASE_ID=$($latest.id)" >> $env:GITHUB_ENV
-          echo "RELEASE_TAG=$($latest.tag_name)" >> $env:GITHUB_ENV
-          echo "RELEASE_EXISTS=true" >> $env:GITHUB_ENV
-        } else {
-          echo "RELEASE_EXISTS=false" >> $env:GITHUB_ENV
-        }
-      env:
-        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-    
     - name: upload asset to release
-      if: env.RELEASE_EXISTS == 'true'
       shell: pwsh
       run: |
-        gh release upload $env:RELEASE_TAG hwgdreqs-windows-portable.zip --clobber
+        Write-Host "Uploading to release: ${{ github.event.inputs.release_tag }}"
+        gh release upload "${{ github.event.inputs.release_tag }}" hwgdreqs-windows-portable.zip --clobber
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     
