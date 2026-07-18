@@ -16,6 +16,7 @@ jobs:
     - name: pyinst.bat
       shell: cmd
       run: |
+        pip install pyinstaller
         call pyinst.bat
     
     - name: dist/hwgdreqs zip
