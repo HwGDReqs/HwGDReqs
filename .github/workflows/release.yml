@@ -40,14 +40,33 @@ jobs:
         path: inno.iss
         options: /O+ /O"output"
     
+    - name: Find the installer
+      id: finder
+      shell: pwsh
+      run: |
+        # search for HwGDReqs-setup.exe anywhere
+        $exePath = Get-ChildItem -Path $env:GITHUB_WORKSPACE -Recurse -Filter "HwGDReqs-setup.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($exePath) {
+          Write-Host "Found installer at: $($exePath.FullName)"
+          $directory = Split-Path -Path $exePath.FullName -Parent
+          $filename = Split-Path -Path $exePath.FullName -Leaf
+          echo "installer_path=$($exePath.FullName)" >> $env:GITHUB_OUTPUT
+          echo "installer_dir=$directory" >> $env:GITHUB_OUTPUT
+          echo "installer_file=$filename" >> $env:GITHUB_OUTPUT
+        } else {
+          Write-Host "::error::HwGDReqs-setup.exe not found!"
+          exit 1
+        }
+    
     - name: upload asset to release
       shell: pwsh
       run: |
         Write-Host "Uploading to release: ${{ github.event.inputs.release_tag }}"
-        # Upload both the portable zip AND the setup installer
+        Write-Host "Installer path: ${{ steps.finder.outputs.installer_path }}"
+        
         gh release upload "${{ github.event.inputs.release_tag }}" `
           hwgdreqs-windows-portable.zip `
-          HwGDReqs-setup.exe `
+          "${{ steps.finder.outputs.installer_path }}" `
           --clobber
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -58,4 +77,4 @@ jobs:
         name: hwgdreqs-windows-builds
         path: |
           hwgdreqs-windows-portable.zip
-          HwGDReqs-setup.exe
+          ${{ steps.finder.outputs.installer_path }}
