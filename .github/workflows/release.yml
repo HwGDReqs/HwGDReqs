@@ -33,16 +33,29 @@ jobs:
       run: |
         Compress-Archive -Path dist/hwgdreqs/* -DestinationPath hwgdreqs-windows-portable.zip -Force
     
+    # inno
+    - name: Compile Inno Setup installer
+      uses: Minionguyjpro/Inno-Setup-Action@v1.2.2
+      with:
+        path: inno.iss
+        options: /O+
+    
     - name: upload asset to release
       shell: pwsh
       run: |
         Write-Host "Uploading to release: ${{ github.event.inputs.release_tag }}"
-        gh release upload "${{ github.event.inputs.release_tag }}" hwgdreqs-windows-portable.zip --clobber
+        # Upload both the portable zip AND the setup installer
+        gh release upload "${{ github.event.inputs.release_tag }}" `
+          hwgdreqs-windows-portable.zip `
+          HwGDReqs-setup.exe `
+          --clobber
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     
-    - name: upload artifact
+    - name: upload artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: hwgdreqs-windows-portable
-        path: hwgdreqs-windows-portable.zip
+        name: hwgdreqs-windows-builds
+        path: |
+          hwgdreqs-windows-portable.zip
+          HwGDReqs-setup.exe
