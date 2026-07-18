@@ -43,7 +43,6 @@ a = Analysis(
         'test',
         'unittest',
     ],
-    excludes=[],
     noarchive=False,
     optimize=0,
 )
