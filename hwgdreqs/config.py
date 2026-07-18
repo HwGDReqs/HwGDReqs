@@ -3,9 +3,6 @@ import json
 import os
 import sys
 from pathlib import Path
-from dotenv import load_dotenv
-
-load_dotenv()
 
 APP_NAME = "HwGDReqs"
 APP_VERSION = "0.8.2"
