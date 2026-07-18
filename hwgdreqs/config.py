@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 
 APP_NAME = "HwGDReqs"
-APP_VERSION = "0.8.2"
+APP_VERSION = "0.8.3"
 
 TWITCH_CLIENT_ID = "hq65d75rdxry2cfjgemvydqp2vfr84"
 TWITCH_SCOPES = ["chat:read", "user:read:email"]
