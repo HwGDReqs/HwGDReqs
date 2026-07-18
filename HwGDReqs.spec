@@ -2,7 +2,7 @@
 
 
 a = Analysis(
-    ['main.py'],
+    ['hwgdreqs/main.py'],
     pathex=[],
     binaries=[],
     datas=[('assets', 'assets')],
