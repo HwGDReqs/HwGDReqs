@@ -27,6 +27,13 @@ jobs:
         python -m pip install pyinstaller
         python -m pip install -r requirements.txt
         python -m PyInstaller HwGDReqs.spec
+
+    - name: Check warnings
+      shell: pwsh
+      run: |
+        if (Test-Path "build/HwGDReqs/warn-HwGDReqs.txt") {
+          Get-Content "build/HwGDReqs/warn-HwGDReqs.txt"
+        }
     
     - name: dist/hwgdreqs zip
       shell: pwsh
