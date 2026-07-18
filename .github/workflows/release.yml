@@ -34,6 +34,11 @@ jobs:
         Compress-Archive -Path dist/hwgdreqs/* -DestinationPath hwgdreqs-windows-portable.zip -Force
     
     # inno
+    - name: check Inno Setup ver
+      shell: cmd
+      run: |
+        iscc /?
+
     - name: Compile Inno Setup installer
       uses: Minionguyjpro/Inno-Setup-Action@v1.2.2
       with:

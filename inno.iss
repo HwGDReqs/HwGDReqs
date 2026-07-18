@@ -27,6 +27,8 @@ OutputBaseFilename=HwGDReqs-setup
 outputDir=output
 SetupIconFile=assets\logo.ico
 SolidCompression=yes
+Compression=lzma2/ultra64
+InternalCompressLevel=ultra
 WizardStyle=modern dynamic windows11
 WizardSmallImageFile=inno-assets\wizard-small.bmp
 
