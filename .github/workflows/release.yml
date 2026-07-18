@@ -26,7 +26,7 @@ jobs:
       run: |
         python -m pip install --force-reinstall pyinstaller requests yt-dlp pytchat PySide6 shiboken6
         python -m pip install -r requirements.txt
-        python -m PyInstaller --hidden-import=PySide6 --hidden-import=PySide6.QtCore --hidden-import=PySide6.QtGui --hidden-import=PySide6.QtWidgets --hidden-import=shiboken6 --add-binary "%USERPROFILE%\AppData\Local\Programs\Python\Python312\Lib\site-packages\PySide6;PySide6" HwGDReqs.spec
+        python -m PyInstaller HwGDReqs.spec
     
     - name: dist/hwgdreqs zip
       shell: pwsh
