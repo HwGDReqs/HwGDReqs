@@ -7,42 +7,27 @@
 #define MyAppPublisher "MalikHw47"
 #define MyAppURL "https://hwgdreqs.github.io"
 #define MyAppExeName "HwGDReqs.exe"
-#define UserName "MalikHw"
 
 [Setup]
-; NOTE: The value of AppId uniquely identifies this application. Do not use the same AppId value in installers for other applications.
-; (To generate a new GUID, click Tools | Generate GUID inside the IDE.)
 AppId={{08EF5909-2044-469E-BDE3-6DE680460E8E}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
-;AppVerName={#MyAppName} {#MyAppVersion}
 AppPublisher={#MyAppPublisher}
 AppPublisherURL={#MyAppURL}
 AppSupportURL={#MyAppURL}
 AppUpdatesURL={#MyAppURL}
 DefaultDirName={autopf}\{#MyAppName}
 UninstallDisplayIcon={app}\{#MyAppExeName}
-; "ArchitecturesAllowed=x64compatible" specifies that Setup cannot run
-; on anything but x64 and Windows 11 on Arm.
 ArchitecturesAllowed=x64compatible
-; "ArchitecturesInstallIn64BitMode=x64compatible" requests that the
-; install be done in "64-bit mode" on x64 or Windows 11 on Arm,
-; meaning it should use the native 64-bit Program Files directory and
-; the 64-bit view of the registry.
 ArchitecturesInstallIn64BitMode=x64compatible
-; Uncomment the following line to use a 64-bit installer.
-;SetupArchitecture=x64
 DisableProgramGroupPage=yes
-LicenseFile=C:\Users\{#UserName}\HwGDReqs\LICENSE
-; Uncomment the following line to run in non administrative install mode (install for current user only).
-;PrivilegesRequired=lowest
+LicenseFile=LICENSE
 PrivilegesRequiredOverridesAllowed=commandline dialog
 OutputBaseFilename=HwGDReqs-setup
-SetupIconFile=C:\Users\{#UserName}\HwGDReqs\assets\logo.ico
+SetupIconFile=assets\logo.ico
 SolidCompression=yes
 WizardStyle=modern dynamic windows11
-WizardSmallImageFile=C:\Users\{#UserName}\HwGDReqs\inno-assets\wizard-small.bmp
-
+WizardSmallImageFile=inno-assets\wizard-small.bmp
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
@@ -51,9 +36,8 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [Files]
-Source: "C:\Users\{#UserName}\HwGDReqs\dist\HwGDReqs\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
-Source: "C:\Users\{#UserName}\HwGDReqs\dist\HwGDReqs\_internal\*"; DestDir: "{app}\_internal"; Flags: ignoreversion recursesubdirs createallsubdirs
-; NOTE: Don't use "Flags: ignoreversion" on any shared system files
+Source: "dist\HwGDReqs\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
+Source: "dist\HwGDReqs\_internal\*"; DestDir: "{app}\_internal"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
@@ -61,4 +45,3 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: de
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
-
