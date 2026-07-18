@@ -1,0 +1,54 @@
+name: Windows Build and Release
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    
+    - name: pyinst.bat
+      shell: cmd
+      run: |
+        call pyinst.bat
+    
+    - name: dist/hwgdreqs zip
+      shell: pwsh
+      run: |
+        Compress-Archive -Path dist/hwgdreqs/* -DestinationPath hwgdreqs-windows-portable.zip -Force
+    
+    - name: get latest (pre)release
+      id: get_latest_release
+      shell: pwsh
+      run: |
+        $releases = gh api repos/$env:GITHUB_REPOSITORY/releases --paginate
+        if ($releases.Count -gt 0) {
+          $latest = $releases[0]
+          echo "RELEASE_ID=$($latest.id)" >> $env:GITHUB_ENV
+          echo "RELEASE_TAG=$($latest.tag_name)" >> $env:GITHUB_ENV
+          echo "RELEASE_EXISTS=true" >> $env:GITHUB_ENV
+        } else {
+          echo "RELEASE_EXISTS=false" >> $env:GITHUB_ENV
+        }
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: upload asset to release
+      if: env.RELEASE_EXISTS == 'true'
+      shell: pwsh
+      run: |
+        gh release upload $env:RELEASE_TAG hwgdreqs-windows-portable.zip --clobber
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: hwgdreqs-windows-portable
+        path: hwgdreqs-windows-portable.zip
