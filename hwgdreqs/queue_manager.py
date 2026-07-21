@@ -34,6 +34,9 @@ class LevelEntry:
     large: bool = False
     two_player: bool = False
     timestamp: float = 0.0
+    likes: int = 0
+    downloads: int = 0
+    disliked: bool = False
 
 
 import random
@@ -204,6 +207,10 @@ class QueueManager(QObject):
                     length=entry.get("length", ""),
                     large=entry.get("large", False),
                     two_player=entry.get("two_player", False),
+                    timestamp=entry.get("timestamp", 0.0),
+                    likes=entry.get("likes", 0),
+                    downloads=entry.get("downloads", 0),
+                    disliked=entry.get("disliked", False),
                 )
                 for entry in raw.get("levels", [])
             ],
@@ -220,6 +227,10 @@ class QueueManager(QObject):
                     length=entry.get("length", ""),
                     large=entry.get("large", False),
                     two_player=entry.get("two_player", False),
+                    timestamp=entry.get("timestamp", 0.0),
+                    likes=entry.get("likes", 0),
+                    downloads=entry.get("downloads", 0),
+                    disliked=entry.get("disliked", False),
                 )
                 for entry in raw.get("level_history", [])
             ],
@@ -322,6 +333,8 @@ class QueueManager(QObject):
         two_player: bool = False,
         disliked: bool = False,
         timestamp: float | None = None,
+        likes: int = 0,
+        downloads: int = 0,
     ) -> bool:
         level_id = str(level_id)
         author_lower = author.lower()
@@ -362,6 +375,9 @@ class QueueManager(QObject):
             large=large,
             two_player=two_player,
             timestamp=timestamp,
+            likes=likes,
+            downloads=downloads,
+            disliked=disliked,
         )
 
         self._data.levels.append(entry)
@@ -406,6 +422,8 @@ class QueueManager(QObject):
         two_player: bool = False,
         disliked: bool = False,
         timestamp: float | None = None,
+        likes: int = 0,
+        downloads: int = 0,
     ) -> None:
 
         old_index = None
@@ -435,6 +453,9 @@ class QueueManager(QObject):
             large=large,
             two_player=two_player,
             timestamp=timestamp,
+            likes=likes,
+            downloads=downloads,
+            disliked=disliked,
         )
         
         self._data.levels[old_index] = entry

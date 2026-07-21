@@ -156,6 +156,8 @@ class YoutubeChatWorker(QObject):
             two_player=bool(data.get("twoPlayer", False)),
             disliked=bool(data.get("disliked", False)),
             platform="youtube",
+            likes=int(data.get("likes", 0)),
+            downloads=int(data.get("downloads", 0)),
         )
         self.status_changed.emit(
             f"Replaced level {old_level_id} with {new_level_id} for {requester}"
@@ -185,6 +187,8 @@ class YoutubeChatWorker(QObject):
             two_player=bool(data.get("twoPlayer", False)),
             disliked=bool(data.get("disliked", False)),
             platform="youtube",
+            likes=int(data.get("likes", 0)),
+            downloads=int(data.get("downloads", 0)),
         )
         if added:
             logger.info(f"Queued: '{data.get('name')}' by '{data.get('author')}' from '{requester}'")

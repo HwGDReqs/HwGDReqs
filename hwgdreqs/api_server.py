@@ -93,24 +93,73 @@ def _make_handler(queue: QueueManager, session: TwitchSession | None = None):
                     self._send_json({"ok": False, "error": "level_not_found"}, status=404)
                     return
                 
+                requester = params.get("requester", "API")
+                platform = params.get("platform", "custom")
+                # no yt/twitvh
+                if platform.lower() in ["twitch", "youtube"]:
+                    platform = "custom"
+                message = params.get("message", "")
+                
                 success = queue.add_level(
                     level_id=level_id,
                     name=level_data.get("name", ""),
                     author=level_data.get("author", ""),
                     difficulty=level_data.get("difficulty", ""),
-                    requester="API",
-                    platform="custom",
+                    requester=requester,
+                    platform=platform,
+                    message=message,
                     description=level_data.get("description", ""),
                     length=level_data.get("length", ""),
                     large=bool(level_data.get("large", False)),
                     two_player=bool(level_data.get("twoPlayer", False)),
                     disliked=bool(level_data.get("disliked", False)),
+                    likes=int(level_data.get("likes", 0)),
+                    downloads=int(level_data.get("downloads", 0)),
                 )
                 
                 if success:
                     self._send_json({"ok": True})
                 else:
                     self._send_json({"ok": False, "error": "add_failed"}, status=400)
+                return
+            if path == "/replace":
+                from hwgdreqs.gdbrowser import fetch_level
+                params = self._params()
+                old_level_id = params.get("id") or params.get("old_id") or ""
+                new_level_id = params.get("new_id") or params.get("new_level_id") or ""
+                if not old_level_id or not new_level_id:
+                    self._send_json({"ok": False, "error": "missing_id"}, status=400)
+                    return
+                
+                level_data = fetch_level(new_level_id)
+                if not level_data:
+                    self._send_json({"ok": False, "error": "level_not_found"}, status=404)
+                    return
+                
+                requester = params.get("requester", "API")
+                platform = params.get("platform", "custom")
+                if platform.lower() in ["twitch", "youtube"]:
+                    platform = "custom"
+                message = params.get("message", "")
+                
+                queue.replace_level(
+                    old_level_id,
+                    level_id=str(level_data.get("id", new_level_id)),
+                    name=level_data.get("name", ""),
+                    author=level_data.get("author", ""),
+                    difficulty=level_data.get("difficulty", ""),
+                    requester=requester,
+                    platform=platform,
+                    message=message,
+                    description=level_data.get("description", ""),
+                    length=level_data.get("length", ""),
+                    large=bool(level_data.get("large", False)),
+                    two_player=bool(level_data.get("twoPlayer", False)),
+                    disliked=bool(level_data.get("disliked", False)),
+                    likes=int(level_data.get("likes", 0)),
+                    downloads=int(level_data.get("downloads", 0)),
+                )
+                self._send_json({"ok": True})
                 return
             if path in ("/delete", "/banauthor", "/banrequester", "/blacklistlevel", "/clear", "/bantwitch"):
                 params = self._params()

@@ -299,6 +299,8 @@ class TwitchChatWorker(QObject):
             two_player=bool(data.get("twoPlayer", False)),
             disliked=bool(data.get("disliked", False)),
             platform="twitch",
+            likes=int(data.get("likes", 0)),
+            downloads=int(data.get("downloads", 0)),
         )
         self.status_changed.emit(f"Replaced level {old_level_id} with {new_level_id} for {requester}")
 
@@ -322,6 +324,8 @@ class TwitchChatWorker(QObject):
             two_player=bool(data.get("twoPlayer", False)),
             disliked=bool(data.get("disliked", False)),
             platform="twitch",
+            likes=int(data.get("likes", 0)),
+            downloads=int(data.get("downloads", 0)),
         )
         if added:
             self.status_changed.emit(f"Queued: '{data.get('name')}' by '{data.get('author')}' from '{requester}'")

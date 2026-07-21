@@ -284,10 +284,16 @@ class MainWindow(QMainWindow):
         self._details_panel = QWidget()
         details_layout = QVBoxLayout(self._details_panel)
         
+        # scroll area
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll_content = QWidget()
+        scroll_layout = QVBoxLayout(scroll_content)
+        
         self._thumbnail_label = QLabel()
         self._thumbnail_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._thumbnail_label.setMinimumSize(300, 300)
-        details_layout.addWidget(self._thumbnail_label)
+        scroll_layout.addWidget(self._thumbnail_label)
         
         self._name_label = QLabel()
         self._name_label.setWordWrap(True)
@@ -296,54 +302,56 @@ class MainWindow(QMainWindow):
         name_font.setPointSize(16)
         name_font.setBold(True)
         self._name_label.setFont(name_font)
-        details_layout.addWidget(self._name_label)
-        details_layout.addSpacing(10)
+        scroll_layout.addWidget(self._name_label)
+        scroll_layout.addSpacing(10)
         
         self._author_label = QLabel()
         self._author_label.setWordWrap(True)
-        details_layout.addWidget(self._author_label)
-        details_layout.addSpacing(10)
+        scroll_layout.addWidget(self._author_label)
+        scroll_layout.addSpacing(10)
         
         self._description_label = QLabel()
         self._description_label.setWordWrap(True)
-        details_layout.addWidget(self._description_label)
-        details_layout.addSpacing(10)
+        scroll_layout.addWidget(self._description_label)
+        scroll_layout.addSpacing(10)
         
         self._sender_label = QLabel()
         self._sender_label.setWordWrap(True)
-        details_layout.addWidget(self._sender_label)
-        details_layout.addSpacing(10)
+        scroll_layout.addWidget(self._sender_label)
+        scroll_layout.addSpacing(10)
         
         self._timestamp_label = QLabel()
         self._timestamp_label.setWordWrap(True)
-        details_layout.addWidget(self._timestamp_label)
-        details_layout.addSpacing(10)
+        scroll_layout.addWidget(self._timestamp_label)
+        scroll_layout.addSpacing(10)
         
         self._difficulty_label = QLabel()
         self._difficulty_label.setWordWrap(True)
-        details_layout.addWidget(self._difficulty_label)
-        details_layout.addSpacing(10)
+        scroll_layout.addWidget(self._difficulty_label)
+        scroll_layout.addSpacing(10)
         
         self._platform_label = QLabel()
         self._platform_label.setWordWrap(True)
-        details_layout.addWidget(self._platform_label)
-        details_layout.addSpacing(10)
+        scroll_layout.addWidget(self._platform_label)
+        scroll_layout.addSpacing(10)
         
         self._message_label = QLabel()
         self._message_label.setWordWrap(True)
-        details_layout.addWidget(self._message_label)
-        details_layout.addSpacing(10)
+        scroll_layout.addWidget(self._message_label)
+        scroll_layout.addSpacing(10)
         
         self._length_label = QLabel()
         self._length_label.setWordWrap(True)
-        details_layout.addWidget(self._length_label)
-        details_layout.addSpacing(10)
+        scroll_layout.addWidget(self._length_label)
+        scroll_layout.addSpacing(10)
         
         self._tags_label = QLabel()
         self._tags_label.setWordWrap(True)
-        details_layout.addWidget(self._tags_label)
+        scroll_layout.addWidget(self._tags_label)
         
-        details_layout.addStretch()
+        scroll_layout.addStretch()
+        scroll.setWidget(scroll_content)
+        details_layout.addWidget(scroll)
         content_layout.addWidget(self._details_panel, stretch=1)
         
         root.addLayout(content_layout, stretch=1)
@@ -445,7 +453,7 @@ class MainWindow(QMainWindow):
                     QMessageBox.information(
                         self,
                         "Update Available",
-                        f"There is an update ({latest_version}). Please update manually.\nIf you installed via pip, run:\n\npip install --upgrade hwgdreqs"
+                        f"There is an update ({latest_version}). Please update manually.\nIf you installed via pip, run:\n\npip install --upgrade hwgdreqs, or run this\nif you used the install script:\n\ncurl https://hwgdreqs.github.io/install.sh | sh\n\n"
                     )
         
         self._check_update_worker.finished.connect(on_finished)
@@ -504,7 +512,26 @@ class MainWindow(QMainWindow):
         download_worker.error.connect(on_download_error)
         download_worker.start()
         
+    def _check_internet(self) -> bool:
+        import socket
+        # connect to google twice
+        for _ in range(2):
+            try:
+                socket.create_connection(("www.google.com", 80), timeout=2)
+                return True
+            except OSError:
+                pass
+        return False
+        
     def startup(self, status_callback: Callable[[str], None] | None = None) -> bool:
+        # check internet 1st
+        if not self._check_internet():
+            QMessageBox.warning(
+                self,
+                "No Internet",
+                "You don't seem connected to the internet, please check your connection",
+                QMessageBox.StandardButton.Close
+            )
         result = self._ensure_session(status_callback)
         if result:
             # check updates after a short delay
@@ -726,9 +753,17 @@ class MainWindow(QMainWindow):
 
     def _update_details(self, entry: LevelEntry) -> None:
         self._name_label.setText(entry.name)
-        self._author_label.setText(f"by \"{entry.author}\"")
-        self._description_label.setText(f"description: \"{entry.description}\"")
-        self._sender_label.setText(f"from \"{entry.requester}\"")
+        self._author_label.setText(f"by '{entry.author}'")
+        
+        # add likes/downloads text
+        if entry.disliked:
+            likes_text = f"👎{entry.likes}"
+        else:
+            likes_text = f"👍{entry.likes}"
+        downloads_text = f"⬇️{entry.downloads}"
+        self._description_label.setText(f"{likes_text} {downloads_text}\ndescription: '{entry.description}'")
+        
+        self._sender_label.setText(f"from '{entry.requester}'")
         if entry.timestamp > 0:
             from datetime import datetime
             time_str = datetime.fromtimestamp(entry.timestamp).strftime("%I:%M %p").lstrip('0')
@@ -737,8 +772,8 @@ class MainWindow(QMainWindow):
             self._timestamp_label.setText("timestamp: Unknown")
         self._difficulty_label.setText(f"difficulty: {entry.difficulty}")
         self._platform_label.clear()
-        self._message_label.setText(f"message: \"{entry.message}\"")
-        self._length_label.setText(f"length: \"{entry.length}\"")
+        self._message_label.setText(f"message: '{entry.message}'")
+        self._length_label.setText(f"length: '{entry.length}'")
         
         tags_text = ""
         if entry.large:
