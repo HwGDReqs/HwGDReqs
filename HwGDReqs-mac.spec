@@ -1,7 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 
-from PyInstaller.building.api import Analysis, PYZ, EXE, APP
-from PyInstaller.building.datastruct import TOC
+from PyInstaller.building.build_main import Analysis, PYZ, EXE
+from PyInstaller.building.api import APP  # the fuck
 
 a = Analysis(
     ['hwgdreqs/main.py'],
