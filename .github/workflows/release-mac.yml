@@ -41,18 +41,18 @@ jobs:
             -ov -format UDZO \
             HwGDReqs-${{ github.event.inputs.release_tag }}.dmg
 
-    - name: upload asset to release
-      shell: pwsh
-      run: |
-        Write-Host "Uploading to release: ${{ github.event.inputs.release_tag }}"
-        Write-Host "Installer path: ${{ steps.finder.outputs.installer_path }}"
-        
-        gh release upload "${{ github.event.inputs.release_tag }}" `
-          hwgdreqs-windows-portable.zip `
-          "${{ steps.finder.outputs.installer_path }}" `
-          --clobber
-      env:
-        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: upload asset to release
+        shell: pwsh
+        run: |
+          Write-Host "Uploading to release: ${{ github.event.inputs.release_tag }}"
+          Write-Host "Installer path: ${{ steps.finder.outputs.installer_path }}"
+
+          gh release upload "${{ github.event.inputs.release_tag }}" `
+            hwgdreqs-windows-portable.zip `
+            "${{ steps.finder.outputs.installer_path }}" `
+            --clobber
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
