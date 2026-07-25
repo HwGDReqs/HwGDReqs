@@ -39,7 +39,7 @@ jobs:
           hdiutil create -volname "HwGDReqs" \
             -srcfolder dist/HwGDReqs.app \
             -ov -format UDZO \
-            HwGDReqs-${{ github.event.inputs.release_tag }}.dmg
+            HwGDReqs-MacOS.dmg
 
       - name: upload asset to release
         shell: pwsh
@@ -48,7 +48,7 @@ jobs:
           Write-Host "Installer path: ${{ steps.finder.outputs.installer_path }}"
 
           gh release upload "${{ github.event.inputs.release_tag }}" `
-            hwgdreqs-windows-portable.zip `
+            HwGDReqs-MacOS.dmg `
             "${{ steps.finder.outputs.installer_path }}" `
             --clobber
         env:
