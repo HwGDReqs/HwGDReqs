@@ -1,134 +1,48 @@
-name: macOS Build and Release
+name: Build macOS App (vibecoded workflow, i understand NO SHIT about mac)
 
 on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: 'release tag'
+        description: 'Release version'
         required: true
         type: string
 
-permissions:
-  contents: write
-
 jobs:
-  build:
+  build-macos:
     runs-on: macos-latest
-    
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
-    
-    - name: Build with PyInstaller
-      shell: bash
-      run: |
-        python -m pip install pyinstaller
-        python -m pip install -r requirements.txt
-        python -m PyInstaller HwGDReqs.spec
-    
-    - name: Check warnings
-      shell: bash
-      run: |
-        if [ -f "build/HwGDReqs/warn-HwGDReqs.txt" ]; then
-          cat "build/HwGDReqs/warn-HwGDReqs.txt"
-        fi
+      - uses: actions/checkout@v4
 
-    - name: create app icon
-      shell: bash
-      run: |
-        # Create iconset directory
-        mkdir -p HwGDReqs.iconset
-        
-        # Generate various sizes from your PNG
-        # You might need to install imagemagick or use sips (built-in)
-        sips -z 16 16 assets/logo.png --out HwGDReqs.iconset/icon_16x16.png
-        sips -z 32 32 assets/logo.png --out HwGDReqs.iconset/icon_16x16@2x.png
-        sips -z 32 32 assets/logo.png --out HwGDReqs.iconset/icon_32x32.png
-        sips -z 64 64 assets/logo.png --out HwGDReqs.iconset/icon_32x32@2x.png
-        sips -z 128 128 assets/logo.png --out HwGDReqs.iconset/icon_128x128.png
-        sips -z 256 256 assets/logo.png --out HwGDReqs.iconset/icon_128x128@2x.png
-        sips -z 256 256 assets/logo.png --out HwGDReqs.iconset/icon_256x256.png
-        sips -z 512 512 assets/logo.png --out HwGDReqs.iconset/icon_256x256@2x.png
-        sips -z 512 512 assets/logo.png --out HwGDReqs.iconset/icon_512x512.png
-        sips -z 1024 1024 assets/logo.png --out HwGDReqs.iconset/icon_512x512@2x.png
-        
-        iconutil -c icns HwGDReqs.iconset -o HwGDReqs.icns
-        
-        rm -rf HwGDReqs.iconset
-    
-    - name: Create .app bundle manually (some clanker help, idk shit about macos, NOT VIBECODED)
-      shell: bash
-      run: |
-        VERSION="${{ github.event.inputs.release_tag }}"
-        VERSION="${VERSION#v}"
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
 
-        if [ -d "dist/HwGDReqs.app" ]; then
-          echo "bundle exists"
-          cp HwGDReqs.icns "dist/HwGDReqs.app/Contents/Resources/"
-        elif [ -d "dist/HwGDReqs" ]; then
-          echo "creating .app from dist/HwGDReqs directory"
-          mkdir -p "dist/HwGDReqs.app/Contents/MacOS"
-          mkdir -p "dist/HwGDReqs.app/Contents/Resources"
-          
-          cp -R dist/HwGDReqs/* "dist/HwGDReqs.app/Contents/MacOS/"
-          cp HwGDReqs.icns "dist/HwGDReqs.app/Contents/Resources/"
-          
-          # Info.plist
-          cat > "dist/HwGDReqs.app/Contents/Info.plist" << 'EOF'
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-            <key>CFBundleExecutable</key>
-            <string>HwGDReqs</string>
-            <key>CFBundleIdentifier</key>
-            <string>com.malikhw47.hwgdreqs</string>
-            <key>CFBundleName</key>
-            <string>HwGDReqs</string>
-            <key>CFBundlePackageType</key>
-            <string>APPL</string>
-            <key>CFBundleShortVersionString</key>
-            <string>${VERSION}</string>
-            <key>LSMinimumSystemVersion</key>
-            <string>10.13</string>
-            <key>NSHighResolutionCapable</key>
-            <true/>
-          </dict>
-          </plist>
-          EOF
-          
-          chmod +x "dist/HwGDReqs.app/Contents/MacOS/HwGDReqs"
-          
-          rm -rf dist/HwGDReqs
-        fi
-    
-    - name: Create DMG installer
-      shell: bash
-      run: |
-        hdiutil create -volname "HwGDReqs" -srcfolder "dist/HwGDReqs.app" -ov -format UDZO "hwgdreqs-macos-installer.dmg"
-    
-    - name: Get DMG size
-      id: dmg_info
-      shell: bash
-      run: |
-        ls -lh hwgdreqs-macos-installer.dmg
-    
-    - name: Upload to release
-      shell: bash
-      run: |
-        echo "Uploading to release: ${{ github.event.inputs.release_tag }}"
-        echo "DMG path: hwgdreqs-macos-installer.dmg"
-        
-        gh release upload "${{ github.event.inputs.release_tag }}" \
-          hwgdreqs-macos-installer.dmg \
-          --clobber
-      env:
-        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-    
-    - name: Upload artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: hwgdreqs-macos-build
-        path: hwgdreqs-macos-installer.dmg
+      - name: Install dependencies
+        run: |
+          pip install pyinstaller
+          pip install -r requirements.txt
+
+      - name: Build macOS app
+        run: |
+          pyinstaller HwGDReqs-mac.spec
+
+      - name: Update version in Info.plist
+        run: |
+          VERSION="${{ github.event.inputs.release_tag }}"
+          VERSION="${VERSION#v}"
+          plutil -replace CFBundleShortVersionString -string "$VERSION" dist/HwGDReqs.app/Contents/Info.plist
+
+      - name: Create DMG (optional)
+        run: |
+          hdiutil create -volname "HwGDReqs" \
+            -srcfolder dist/HwGDReqs.app \
+            -ov -format UDZO \
+            HwGDReqs-${{ github.event.inputs.release_tag }}.dmg
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: HwGDReqs-macOS
+          path: dist/HwGDReqs.app
