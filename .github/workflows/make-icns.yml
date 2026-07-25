@@ -1,0 +1,44 @@
+name: Create ICNS Icon
+
+on:
+  workflow_dispatch:
+
+jobs:
+  convert:
+    runs-on: macos-latest
+    permissions:
+      contents: write
+      actions: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Convert PNG to ICNS
+        run: |
+          # Using sips (built into macOS)
+          mkdir -p icon.iconset
+          for size in 16 32 128 256 512; do
+            sips -z $size $size assets/logo.png --out icon.iconset/icon_${size}x${size}.png
+            sips -z $((size*2)) $((size*2)) assets/logo.png --out icon.iconset/icon_${size}x${size}@2x.png
+          done
+          iconutil -c icns icon.iconset -o assets/icon.icns
+          rm -rf icon.iconset
+
+      - name: Commit changes
+        run: |
+          git add assets/icon.icns
+          git diff --staged --quiet || git commit -m "chore: add icon.icns [skip ci]"
+          git push
+
+      - name: 💀 Self-destruct
+        if: always()
+        run: |
+          # Delete this workflow file
+          git rm .github/workflows/make-icns.yml
+          git commit -m "chore: remove make-icns workflow [skip ci]"
+          git push
+          
+          gh api repos/${{ github.repository }}/actions/workflows/make-icns.yml/disable || true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
