@@ -1,5 +1,8 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+from PyInstaller.building.api import Analysis, PYZ, EXE, APP
+from PyInstaller.building.datastruct import TOC
+
 a = Analysis(
     ['hwgdreqs/main.py'],
     pathex=[],
