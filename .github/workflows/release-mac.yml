@@ -43,6 +43,12 @@ jobs:
             -srcfolder dist/HwGDReqs.app \
             -ov -format UDZO \
             HwGDReqs-MacOS.dmg
+            
+      - name: Upload DMG artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: HwGDReqs-MacOS
+          path: HwGDReqs-MacOS.dmg
 
       - name: upload asset to release
         shell: pwsh
@@ -50,12 +56,6 @@ jobs:
           Write-Host "Uploading to release: ${{ github.event.inputs.release_tag }}"
           Write-Host "Installer path: ${{ steps.finder.outputs.installer_path }}"
 
-          gh release upload "${{ github.event.inputs.release_tag }}" HwGDReqs-MacOS.dmg "${{ steps.finder.outputs.installer_path }}" --clobber
+          gh release upload "${{ github.event.inputs.release_tag }}" HwGDReqs-MacOS.dmg --clobber
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: HwGDReqs-macOS
-          path: dist/HwGDReqs.app
