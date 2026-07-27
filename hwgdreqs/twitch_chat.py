@@ -373,7 +373,6 @@ class TwitchChatWorker(QObject):
         if not data:
             if not self._queue.allow_any_level:
                 return
-            # Level not found on GDBrowser (likely unlisted) - add with stub data
             added = self._queue.add_level(
                 level_id=level_id,
                 name=f"⚠️ {level_id}",

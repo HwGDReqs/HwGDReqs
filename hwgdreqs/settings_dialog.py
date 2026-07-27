@@ -167,7 +167,7 @@ class GeneralTab(QWidget):
         self._allow_any_level_cb.setChecked(queue.allow_any_level)
         self._allow_any_level_cb.setToolTip(
             "When enabled, levels that can't be found via GDBrowser (e.g. unlisted) are still added.\n"
-            "They will show as '⚠️ <id>' with no data in the queue."
+            "They will show as '⚠️ <id>' with no data in the queue. (At your own motherf*cking risk)"
         )
         layout.addWidget(self._allow_any_level_cb)
 

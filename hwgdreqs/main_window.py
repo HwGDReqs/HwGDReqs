@@ -775,6 +775,7 @@ class MainWindow(QMainWindow):
         else:
             self._timestamp_label.setText("timestamp: Unknown")
         self._difficulty_label.setText(f"difficulty: {entry.difficulty}")
+        self._platform_label.setText(f"platform: {entry.platform}")
         self._message_label.setText(f"message: '{entry.message}'")
         self._length_label.setText(f"length: '{entry.length}'")
         

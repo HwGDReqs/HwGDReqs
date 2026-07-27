@@ -169,7 +169,6 @@ class YoutubeChatWorker(QObject):
             if not self._queue.allow_any_level:
                 logger.warning(f"Failed to fetch level {level_id}")
                 return
-            # Level not found on GDBrowser (likely unlisted) - add with stub data
             added = self._queue.add_level(
                 level_id=level_id,
                 name=f"⚠️ {level_id}",

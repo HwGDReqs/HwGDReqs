@@ -74,7 +74,6 @@ class QueueData:
     twitch_vip_only: bool = False
     twitch_followers_only: bool = False
 
-    # unlisted / no-data levels
     allow_any_level: bool = False
 
 
@@ -650,7 +649,6 @@ class QueueManager(QObject):
         self._notify()
 
     def shuffle_queue(self) -> None:
-        """Randomly shuffle all levels in the queue."""
         shuffled = list(self._data.levels)
         random.shuffle(shuffled)
         self._data.levels = shuffled
