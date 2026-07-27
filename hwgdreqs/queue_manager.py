@@ -74,6 +74,9 @@ class QueueData:
     twitch_vip_only: bool = False
     twitch_followers_only: bool = False
 
+    # unlisted / no-data levels
+    allow_any_level: bool = False
+
 
 
 class QueueManager(QObject):
@@ -231,6 +234,16 @@ class QueueManager(QObject):
         self.save()
         self._notify()
 
+    @property
+    def allow_any_level(self) -> bool:
+        return self._data.allow_any_level
+
+    @allow_any_level.setter
+    def allow_any_level(self, value: bool) -> None:
+        self._data.allow_any_level = value
+        self.save()
+        self._notify()
+
 
     def check_and_update_cooldown(self, requester: str) -> bool:
         """Returns True if the requester is NOT on cooldown (and updates their last request time), False otherwise."""
@@ -325,6 +338,7 @@ class QueueManager(QObject):
             twitch_subs_only=bool(raw.get("twitch_subs_only", False)),
             twitch_vip_only=bool(raw.get("twitch_vip_only", False)),
             twitch_followers_only=bool(raw.get("twitch_followers_only", False)),
+            allow_any_level=bool(raw.get("allow_any_level", False)),
         )
 
         # Populate missing timestamps
@@ -369,6 +383,7 @@ class QueueManager(QObject):
             "twitch_subs_only": self._data.twitch_subs_only,
             "twitch_vip_only": self._data.twitch_vip_only,
             "twitch_followers_only": self._data.twitch_followers_only,
+            "allow_any_level": self._data.allow_any_level,
         }
         queue_file().write_text(json.dumps(payload, indent=2), encoding="utf-8")
         
@@ -434,12 +449,13 @@ class QueueManager(QObject):
             return False
         if any(entry.id == level_id for entry in self._data.levels):
             return False
-        if difficulty not in self._data.allowed_difficulties:
-            return False
-        if length and length not in self._data.allowed_lengths:
-            return False
-        if self._data.no_disliked and disliked:
-            return False
+        if not self._data.allow_any_level:
+            if difficulty not in self._data.allowed_difficulties:
+                return False
+            if length and length not in self._data.allowed_lengths:
+                return False
+            if self._data.no_disliked and disliked:
+                return False
         
         if self._data.max_levels_per_requester > 0:
             if self.get_requester_level_count(requester) >= self._data.max_levels_per_requester:
@@ -630,6 +646,14 @@ class QueueManager(QObject):
 
     def reorder_levels(self, new_levels: list[LevelEntry]) -> None:
         self._data.levels = list(new_levels)
+        self.save()
+        self._notify()
+
+    def shuffle_queue(self) -> None:
+        """Randomly shuffle all levels in the queue."""
+        shuffled = list(self._data.levels)
+        random.shuffle(shuffled)
+        self._data.levels = shuffled
         self.save()
         self._notify()
 

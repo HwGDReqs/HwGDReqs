@@ -293,6 +293,7 @@ class MainWindow(QMainWindow):
         self._thumbnail_label = QLabel()
         self._thumbnail_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._thumbnail_label.setMinimumSize(300, 300)
+        self._thumbnail_label.hide()
         scroll_layout.addWidget(self._thumbnail_label)
         
         self._name_label = QLabel()
@@ -364,6 +365,7 @@ class MainWindow(QMainWindow):
         self._blacklist_sender_btn = QPushButton("Blacklist Sender")
         self._blacklist_author_btn = QPushButton("Blacklist Author")
         self._ban_requester_btn = QPushButton("Ban Requester")
+        self._shuffle_btn = QPushButton("Shuffle")
         self._clear_queue_btn = QPushButton("Clear Queue")
 
         for btn in (
@@ -379,6 +381,7 @@ class MainWindow(QMainWindow):
         
         self._ban_requester_btn.hide()
         
+        actions.addWidget(self._shuffle_btn)
         actions.addWidget(self._clear_queue_btn)
         self._stats_btn = QPushButton("Statistics")
         self._stats_btn.clicked.connect(self._show_statistics)
@@ -390,6 +393,7 @@ class MainWindow(QMainWindow):
         self._blacklist_sender_btn.clicked.connect(self._blacklist_sender)
         self._blacklist_author_btn.clicked.connect(self._blacklist_author)
         self._ban_requester_btn.clicked.connect(self._ban_requester)
+        self._shuffle_btn.clicked.connect(self._shuffle_queue)
         self._clear_queue_btn.clicked.connect(self._queue.clear_queue)
 
         root.addLayout(actions)
@@ -771,7 +775,6 @@ class MainWindow(QMainWindow):
         else:
             self._timestamp_label.setText("timestamp: Unknown")
         self._difficulty_label.setText(f"difficulty: {entry.difficulty}")
-        self._platform_label.clear()
         self._message_label.setText(f"message: '{entry.message}'")
         self._length_label.setText(f"length: '{entry.length}'")
         
@@ -790,9 +793,12 @@ class MainWindow(QMainWindow):
             if entry.id in self._thumbnail_cache_order:
                 self._thumbnail_cache_order.remove(entry.id)
             self._thumbnail_cache_order.append(entry.id)
+            self._thumbnail_label.show()
+            self._thumbnail_label.setMinimumSize(0, 0)
             self._update_thumbnail()
             return
 
+        self._thumbnail_label.hide()
         url = QUrl(f"https://levelthumbs.prevter.me/thumbnail/{entry.id}/small")
         request = QNetworkRequest(url)
         reply = self._network_manager.get(request)
@@ -810,6 +816,7 @@ class MainWindow(QMainWindow):
         self._length_label.clear()
         self._tags_label.clear()
         self._thumbnail_label.clear()
+        self._thumbnail_label.hide()
         self._current_pixmap = None
 
     def _on_thumbnail_loaded(self, reply: QNetworkReply, level_id: str) -> None:
@@ -827,13 +834,15 @@ class MainWindow(QMainWindow):
                     while len(self._thumbnail_cache_order) > cache_limit:
                         old_id = self._thumbnail_cache_order.pop(0)
                         self._thumbnail_cache.pop(old_id, None)
+                self._thumbnail_label.show()
+                self._thumbnail_label.setMinimumSize(0, 0)
                 self._update_thumbnail()
             else:
                 self._current_pixmap = None
-                self._thumbnail_label.clear()
+                self._thumbnail_label.hide()
         else:
             self._current_pixmap = None
-            self._thumbnail_label.clear()
+            self._thumbnail_label.hide()
         reply.deleteLater()
 
     def _update_thumbnail(self):
@@ -974,6 +983,11 @@ class MainWindow(QMainWindow):
     def _show_statistics(self) -> None:
         dialog = StatisticsDialog(self._queue, self)
         dialog.exec()
+
+    def _shuffle_queue(self) -> None:
+        if self._queue.levels:
+            self._queue.shuffle_queue()
+            self.statusBar().showMessage("Queue shuffled!")
 
     def _refresh_youtube(self) -> None:
         if self._youtube_chat_worker:

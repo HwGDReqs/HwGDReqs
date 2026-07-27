@@ -371,6 +371,28 @@ class TwitchChatWorker(QObject):
     def _enqueue_level(self, requester: str, level_id: str, message: str, priority: bool = False) -> None:
         data = fetch_level(level_id)
         if not data:
+            if not self._queue.allow_any_level:
+                return
+            # Level not found on GDBrowser (likely unlisted) - add with stub data
+            added = self._queue.add_level(
+                level_id=level_id,
+                name=f"⚠️ {level_id}",
+                author="Unknown",
+                difficulty="Unrated",
+                requester=requester,
+                message=message,
+                description="no data... i guess",
+                length="",
+                large=False,
+                two_player=False,
+                disliked=False,
+                platform="twitch",
+                likes=0,
+                downloads=0,
+                priority=priority,
+            )
+            if added:
+                self.status_changed.emit(f"Queued (unlisted): '{level_id}' from '{requester}'")
             return
         difficulty = str(data.get("difficulty", "Unrated"))
         if difficulty in ["NA", "Unknown"]:
@@ -394,3 +416,4 @@ class TwitchChatWorker(QObject):
         )
         if added:
             self.status_changed.emit(f"Queued: '{data.get('name')}' by '{data.get('author')}' from '{requester}'")
+

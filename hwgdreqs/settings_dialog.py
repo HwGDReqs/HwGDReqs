@@ -163,11 +163,20 @@ class GeneralTab(QWidget):
         cooldown_layout.addStretch()
         layout.addLayout(cooldown_layout)
 
+        self._allow_any_level_cb = QCheckBox("Allow ANY level even if not on servers (for unlisted levels)")
+        self._allow_any_level_cb.setChecked(queue.allow_any_level)
+        self._allow_any_level_cb.setToolTip(
+            "When enabled, levels that can't be found via GDBrowser (e.g. unlisted) are still added.\n"
+            "They will show as '⚠️ <id>' with no data in the queue."
+        )
+        layout.addWidget(self._allow_any_level_cb)
+
         layout.addStretch()
 
     def apply(self) -> None:
         self._queue.thumbnail_cache_size = self._thumb_cache_spinbox.value()
         self._queue.requester_cooldown = self._cooldown_spinbox.value()
+        self._queue.allow_any_level = self._allow_any_level_cb.isChecked()
 
 
 class CommandsTab(QWidget):

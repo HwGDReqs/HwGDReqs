@@ -164,12 +164,33 @@ class YoutubeChatWorker(QObject):
         )
 
     def _enqueue_level(self, requester: str, level_id: str, message: str) -> None:
-
         data = fetch_level(level_id)
         if not data:
-            logger.warning(f"Failed to fetch level {level_id}")
+            if not self._queue.allow_any_level:
+                logger.warning(f"Failed to fetch level {level_id}")
+                return
+            # Level not found on GDBrowser (likely unlisted) - add with stub data
+            added = self._queue.add_level(
+                level_id=level_id,
+                name=f"⚠️ {level_id}",
+                author="Unknown",
+                difficulty="Unrated",
+                requester=requester,
+                message=message,
+                description="no data... i guess",
+                length="",
+                large=False,
+                two_player=False,
+                disliked=False,
+                platform="youtube",
+                likes=0,
+                downloads=0,
+            )
+            if added:
+                logger.info(f"Queued (unlisted): '{level_id}' from '{requester}'")
+                self.status_changed.emit(f"Queued (unlisted): '{level_id}' from '{requester}'")
             return
-        
+
         difficulty = str(data.get("difficulty", "Unrated"))
         if difficulty in ["NA", "Unknown"]:
             difficulty = "Unrated"
