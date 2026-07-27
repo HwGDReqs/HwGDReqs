@@ -820,6 +820,38 @@ class SettingsDialog(QDialog):
             self._has_chat_edit_scope = False
             self._has_channel_moderate_scope = False
 
+        # prio + onli
+        twitch_layout.addSpacing(15)
+        priority_group_label = QLabel("Twitch Priorities & Restrictions:")
+        priority_group_font = priority_group_label.font()
+        priority_group_font.setBold(True)
+        priority_group_label.setFont(priority_group_font)
+        twitch_layout.addWidget(priority_group_label)
+
+        self._twitch_sub_priority_cb = QCheckBox("Subscriber Priority")
+        self._twitch_sub_priority_cb.setChecked(queue.twitch_sub_priority)
+        twitch_layout.addWidget(self._twitch_sub_priority_cb)
+
+        self._twitch_vip_priority_cb = QCheckBox("VIP Priority")
+        self._twitch_vip_priority_cb.setChecked(queue.twitch_vip_priority)
+        twitch_layout.addWidget(self._twitch_vip_priority_cb)
+
+        self._twitch_mod_priority_cb = QCheckBox("Moderator Priority")
+        self._twitch_mod_priority_cb.setChecked(queue.twitch_mod_priority)
+        twitch_layout.addWidget(self._twitch_mod_priority_cb)
+
+        self._twitch_subs_only_cb = QCheckBox("Subs Only")
+        self._twitch_subs_only_cb.setChecked(queue.twitch_subs_only)
+        twitch_layout.addWidget(self._twitch_subs_only_cb)
+
+        self._twitch_vip_only_cb = QCheckBox("VIP Only")
+        self._twitch_vip_only_cb.setChecked(queue.twitch_vip_only)
+        twitch_layout.addWidget(self._twitch_vip_only_cb)
+
+        self._twitch_followers_only_cb = QCheckBox("Followers Only")
+        self._twitch_followers_only_cb.setChecked(queue.twitch_followers_only)
+        twitch_layout.addWidget(self._twitch_followers_only_cb)
+
         twitch_layout.addStretch()
         tabs.addTab(twitch_tab, "Twitch")
 
@@ -889,6 +921,12 @@ class SettingsDialog(QDialog):
         self._filters_tab.apply_filters()
         self._api_tab.apply()
         self._queue.max_levels_per_requester = self._general_tab._max_levels_spinbox.value()
+        self._queue.twitch_sub_priority = self._twitch_sub_priority_cb.isChecked()
+        self._queue.twitch_vip_priority = self._twitch_vip_priority_cb.isChecked()
+        self._queue.twitch_mod_priority = self._twitch_mod_priority_cb.isChecked()
+        self._queue.twitch_subs_only = self._twitch_subs_only_cb.isChecked()
+        self._queue.twitch_vip_only = self._twitch_vip_only_cb.isChecked()
+        self._queue.twitch_followers_only = self._twitch_followers_only_cb.isChecked()
         self.accept()
 
     def refresh(self) -> None:

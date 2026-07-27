@@ -37,6 +37,7 @@ class LevelEntry:
     likes: int = 0
     downloads: int = 0
     disliked: bool = False
+    priority: bool = False
 
 
 import random
@@ -64,6 +65,15 @@ class QueueData:
     api_local_port: int = 6767
     api_host_to_network: bool = False
     api_network_port: int = field(default_factory=lambda: random.randint(1024, 65535))
+
+    # prio + onli
+    twitch_sub_priority: bool = False
+    twitch_vip_priority: bool = False
+    twitch_mod_priority: bool = False
+    twitch_subs_only: bool = False
+    twitch_vip_only: bool = False
+    twitch_followers_only: bool = False
+
 
 
 class QueueManager(QObject):
@@ -161,6 +171,67 @@ class QueueManager(QObject):
         self.save()
         self._notify()
 
+    @property
+    def twitch_sub_priority(self) -> bool:
+        return self._data.twitch_sub_priority
+
+    @twitch_sub_priority.setter
+    def twitch_sub_priority(self, value: bool) -> None:
+        self._data.twitch_sub_priority = value
+        self.save()
+        self._notify()
+
+    @property
+    def twitch_vip_priority(self) -> bool:
+        return self._data.twitch_vip_priority
+
+    @twitch_vip_priority.setter
+    def twitch_vip_priority(self, value: bool) -> None:
+        self._data.twitch_vip_priority = value
+        self.save()
+        self._notify()
+
+    @property
+    def twitch_mod_priority(self) -> bool:
+        return self._data.twitch_mod_priority
+
+    @twitch_mod_priority.setter
+    def twitch_mod_priority(self, value: bool) -> None:
+        self._data.twitch_mod_priority = value
+        self.save()
+        self._notify()
+
+    @property
+    def twitch_subs_only(self) -> bool:
+        return self._data.twitch_subs_only
+
+    @twitch_subs_only.setter
+    def twitch_subs_only(self, value: bool) -> None:
+        self._data.twitch_subs_only = value
+        self.save()
+        self._notify()
+
+    @property
+    def twitch_vip_only(self) -> bool:
+        return self._data.twitch_vip_only
+
+    @twitch_vip_only.setter
+    def twitch_vip_only(self, value: bool) -> None:
+        self._data.twitch_vip_only = value
+        self.save()
+        self._notify()
+
+    @property
+    def twitch_followers_only(self) -> bool:
+        return self._data.twitch_followers_only
+
+    @twitch_followers_only.setter
+    def twitch_followers_only(self, value: bool) -> None:
+        self._data.twitch_followers_only = value
+        self.save()
+        self._notify()
+
+
     def check_and_update_cooldown(self, requester: str) -> bool:
         """Returns True if the requester is NOT on cooldown (and updates their last request time), False otherwise."""
         if self._data.requester_cooldown <= 0:
@@ -211,6 +282,7 @@ class QueueManager(QObject):
                     likes=entry.get("likes", 0),
                     downloads=entry.get("downloads", 0),
                     disliked=entry.get("disliked", False),
+                    priority=entry.get("priority", False),
                 )
                 for entry in raw.get("levels", [])
             ],
@@ -231,6 +303,7 @@ class QueueManager(QObject):
                     likes=entry.get("likes", 0),
                     downloads=entry.get("downloads", 0),
                     disliked=entry.get("disliked", False),
+                    priority=entry.get("priority", False),
                 )
                 for entry in raw.get("level_history", [])
             ],
@@ -246,6 +319,12 @@ class QueueManager(QObject):
             api_local_port=int(raw.get("api_local_port", 6767)),
             api_host_to_network=bool(raw.get("api_host_to_network", False)),
             api_network_port=int(raw.get("api_network_port", random.randint(1024, 65535))),
+            twitch_sub_priority=bool(raw.get("twitch_sub_priority", False)),
+            twitch_vip_priority=bool(raw.get("twitch_vip_priority", False)),
+            twitch_mod_priority=bool(raw.get("twitch_mod_priority", False)),
+            twitch_subs_only=bool(raw.get("twitch_subs_only", False)),
+            twitch_vip_only=bool(raw.get("twitch_vip_only", False)),
+            twitch_followers_only=bool(raw.get("twitch_followers_only", False)),
         )
 
         # Populate missing timestamps
@@ -284,6 +363,12 @@ class QueueManager(QObject):
             "api_local_port": self._data.api_local_port,
             "api_host_to_network": self._data.api_host_to_network,
             "api_network_port": self._data.api_network_port,
+            "twitch_sub_priority": self._data.twitch_sub_priority,
+            "twitch_vip_priority": self._data.twitch_vip_priority,
+            "twitch_mod_priority": self._data.twitch_mod_priority,
+            "twitch_subs_only": self._data.twitch_subs_only,
+            "twitch_vip_only": self._data.twitch_vip_only,
+            "twitch_followers_only": self._data.twitch_followers_only,
         }
         queue_file().write_text(json.dumps(payload, indent=2), encoding="utf-8")
         
@@ -335,6 +420,7 @@ class QueueManager(QObject):
         timestamp: float | None = None,
         likes: int = 0,
         downloads: int = 0,
+        priority: bool = False,
     ) -> bool:
         level_id = str(level_id)
         author_lower = author.lower()
@@ -378,9 +464,17 @@ class QueueManager(QObject):
             likes=likes,
             downloads=downloads,
             disliked=disliked,
+            priority=priority,
         )
 
-        self._data.levels.append(entry)
+        if priority:
+            insert_idx = 0
+            for idx, e in enumerate(self._data.levels):
+                if e.priority:
+                    insert_idx = idx + 1
+            self._data.levels.insert(insert_idx, entry)
+        else:
+            self._data.levels.append(entry)
 
         self.increment_requester_level_count(requester)
         self.save()

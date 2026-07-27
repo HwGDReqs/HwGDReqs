@@ -5,10 +5,10 @@ import sys
 from pathlib import Path
 
 APP_NAME = "HwGDReqs"
-APP_VERSION = "0.9.0"
+APP_VERSION = "0.10.0"
 
 TWITCH_CLIENT_ID = "hq65d75rdxry2cfjgemvydqp2vfr84"
-TWITCH_SCOPES = ["chat:read", "user:read:email"]
+TWITCH_SCOPES = ["chat:read", "user:read:email", "moderator:read:followers"]
 TWITCH_CHAT_EDIT_SCOPE = "chat:edit"
 TWITCH_CHANNEL_MODERATE_SCOPE = ["channel:moderate", "moderator:manage:banned_users"]
 TWITCH_DEVICE_URL = "https://id.twitch.tv/oauth2/device"

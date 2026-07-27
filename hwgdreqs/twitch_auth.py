@@ -398,3 +398,24 @@ def validate_session(
             return None
         except requests.RequestException:
             time.sleep(interval)
+
+
+def check_twitch_follower(session: TwitchSession, target_user_id: str) -> bool:
+    client_id = _require_client_id()
+    url = "https://api.twitch.tv/helix/channels/followers"
+    headers = {
+        "Authorization": f"Bearer {session.access_token}",
+        "Client-Id": client_id,
+    }
+    params = {
+        "broadcaster_id": session.user_id,
+        "user_id": target_user_id,
+    }
+    try:
+        response = requests.get(url, headers=headers, params=params, timeout=10)
+        if response.status_code == 200:
+            data = response.json().get("data", [])
+            return len(data) > 0
+    except Exception:
+        pass
+    return False

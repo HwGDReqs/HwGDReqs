@@ -10,7 +10,8 @@ from hwgdreqs.config import LEVEL_ID_PATTERN, COMMA_LEVEL_ID_PATTERN, TWITCH_IRC
 from hwgdreqs.gdbrowser import fetch_level
 from hwgdreqs.logging_service import get_logger
 from hwgdreqs.queue_manager import QueueManager
-from hwgdreqs.twitch_auth import TwitchSession
+from hwgdreqs.twitch_auth import TwitchSession, check_twitch_follower
+
 
 LEVEL_RE = re.compile(LEVEL_ID_PATTERN)
 COMMA_LEVEL_RE = re.compile(COMMA_LEVEL_ID_PATTERN)
@@ -78,6 +79,7 @@ class TwitchChatWorker(QObject):
                 f"PASS oauth:{self._session.access_token}\r\n".encode("utf-8")
             )
             sock.send(f"NICK {self._session.login}\r\n".encode("utf-8"))
+            sock.send(b"CAP REQ :twitch.tv/tags\r\n")
             sock.send(f"JOIN #{channel}\r\n".encode("utf-8"))
             self.status_changed.emit(f"Connected to #{channel}")
         except OSError as exc:
@@ -122,6 +124,15 @@ class TwitchChatWorker(QObject):
 
             if "PRIVMSG" not in line:
                 return
+
+            tags = {}
+            if line.startswith("@"):
+                tags_part, rest_line = line[1:].split(" ", 1)
+                for tag in tags_part.split(";"):
+                    if "=" in tag:
+                        k, v = tag.split("=", 1)
+                        tags[k] = v
+
             match = re.match(
                 r"(?:@[^ ]+ )?:([^!]+)!.* PRIVMSG #[^ ]+ :(.*)",
                 line,
@@ -131,12 +142,52 @@ class TwitchChatWorker(QObject):
 
             username, message = match.group(1), match.group(2)
             self.message_received.emit(username, message)
+
+            # see tags
+            user_id = tags.get("user-id", "")
+            is_broadcaster = (username.lower() == self._session.login.lower()) or (user_id == self._session.user_id)
+            
+            badges = tags.get("badges", "")
+            is_mod = is_broadcaster or (tags.get("mod") == "1") or ("moderator/" in badges)
+            is_sub = is_broadcaster or (tags.get("subscriber") == "1") or ("subscriber/" in badges) or ("founder/" in badges)
+            is_vip = is_broadcaster or ("vip/" in badges)
+
             if not self._handle_commands(username, message):
-                self._scan_for_levels(username, message)
+                self._scan_for_levels(
+                    username,
+                    message,
+                    user_id=user_id,
+                    is_broadcaster=is_broadcaster,
+                    is_mod=is_mod,
+                    is_sub=is_sub,
+                    is_vip=is_vip,
+                )
         except Exception as e:
             pass
 
-    def _scan_for_levels(self, requester: str, message: str) -> None:
+    def _scan_for_levels(
+        self,
+        requester: str,
+        message: str,
+        *,
+        user_id: str = "",
+        is_broadcaster: bool = False,
+        is_mod: bool = False,
+        is_sub: bool = False,
+        is_vip: bool = False,
+    ) -> None:
+        # see restrictions
+        if self._queue.twitch_subs_only and not is_sub and not is_mod and not is_broadcaster:
+            return
+        if self._queue.twitch_vip_only and not is_vip and not is_mod and not is_broadcaster:
+            return
+        if self._queue.twitch_followers_only and not is_mod and not is_broadcaster:
+            if user_id:
+                if not check_twitch_follower(self._session, user_id):
+                    return
+            else:
+                return
+
         matches = []
         for m in LEVEL_RE.finditer(message):
             matches.append((m.start(), m.group(1)))
@@ -153,9 +204,22 @@ class TwitchChatWorker(QObject):
         if level_ids:
             if not self._queue.check_and_update_cooldown(requester):
                 return
+            
+            # see priority
+            priority = False
+            if is_broadcaster:
+                if self._queue.twitch_sub_priority or self._queue.twitch_vip_priority or self._queue.twitch_mod_priority:
+                    priority = True
+            elif is_mod and self._queue.twitch_mod_priority:
+                priority = True
+            elif is_vip and self._queue.twitch_vip_priority:
+                priority = True
+            elif is_sub and self._queue.twitch_sub_priority:
+                priority = True
+
             for level_id in level_ids:
                 self.level_detected.emit(requester, level_id)
-                self._enqueue_level(requester, level_id, message)
+                self._enqueue_level(requester, level_id, message, priority=priority)
 
     def _handle_commands(self, requester: str, message: str) -> bool:
 
@@ -304,7 +368,7 @@ class TwitchChatWorker(QObject):
         )
         self.status_changed.emit(f"Replaced level {old_level_id} with {new_level_id} for {requester}")
 
-    def _enqueue_level(self, requester: str, level_id: str, message: str) -> None:
+    def _enqueue_level(self, requester: str, level_id: str, message: str, priority: bool = False) -> None:
         data = fetch_level(level_id)
         if not data:
             return
@@ -326,6 +390,7 @@ class TwitchChatWorker(QObject):
             platform="twitch",
             likes=int(data.get("likes", 0)),
             downloads=int(data.get("downloads", 0)),
+            priority=priority,
         )
         if added:
             self.status_changed.emit(f"Queued: '{data.get('name')}' by '{data.get('author')}' from '{requester}'")
