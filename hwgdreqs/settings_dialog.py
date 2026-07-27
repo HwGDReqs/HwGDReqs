@@ -1,6 +1,8 @@
+import platform
 import sys
 import os
 import subprocess
+from pathlib import Path
 import requests
 from PySide6.QtCore import Signal, Qt, QUrl, QThread, QTimer
 from PySide6.QtGui import QPixmap, QDesktopServices, QGuiApplication
@@ -453,8 +455,42 @@ class InfoTab(QWidget):
         layout.addStretch()
 
 
+def _detect_run_mode() -> str:
+    """Detect how the app is currently running.
+    
+    Returns one of: 'frozen_windows', 'frozen_macos', 'pip', 'source'
+    """
+    if getattr(sys, "frozen", False):
+        if sys.platform == "win32":
+            return "frozen_windows"
+        elif sys.platform == "darwin":
+            return "frozen_macos"
+        else:
+            return "frozen_other"
+    
+    # Check if running from a pip installation (hwgdreqs is in site-packages)
+    try:
+        import importlib.util
+        spec = importlib.util.find_spec("hwgdreqs")
+        if spec is not None and spec.origin is not None:
+            import site
+            site_packages_dirs = site.getsitepackages() if hasattr(site, 'getsitepackages') else []
+            # Also check user site
+            user_site = site.getusersitepackages() if hasattr(site, 'getusersitepackages') else None
+            if user_site:
+                site_packages_dirs = list(site_packages_dirs) + [user_site]
+            origin = os.path.normcase(os.path.abspath(spec.origin))
+            for sp in site_packages_dirs:
+                if origin.startswith(os.path.normcase(os.path.abspath(sp))):
+                    return "pip"
+    except Exception:
+        pass
+    
+    return "source"
+
+
 class UpdateCheckerWorker(QThread):
-    finished = Signal(str, str)  # tag_name, download_url
+    finished = Signal(str)  # tag_name only
     error = Signal(str)
 
     def run(self) -> None:
@@ -468,10 +504,7 @@ class UpdateCheckerWorker(QThread):
             response.raise_for_status()
             data = response.json()
             tag_name = data.get("tag_name", "").strip()
-            
-            download_url = "https://github.com/HwGDReqs/HwGDReqs/releases/latest/download/hwgdreqs-windows-portable.zip"
-            
-            self.finished.emit(tag_name, download_url)
+            self.finished.emit(tag_name)
         except Exception as e:
             self.error.emit(str(e))
 
@@ -545,7 +578,7 @@ class UpdaterTab(QWidget):
         self._check_worker = None
         self._download_worker = None
         self._progress_dialog = None
-        self._is_linux = sys.platform.startswith('linux')
+        self._run_mode = _detect_run_mode()
 
         layout = QVBoxLayout(self)
         layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -578,7 +611,7 @@ class UpdaterTab(QWidget):
         layout.addWidget(self._check_btn, alignment=Qt.AlignmentFlag.AlignCenter)
 
         layout.addStretch()
-        
+
     def check_for_updates_on_startup(self):
         self._check_for_updates(silent=True)
 
@@ -589,48 +622,89 @@ class UpdaterTab(QWidget):
 
         self._check_worker = UpdateCheckerWorker(self)
         self._check_worker.finished.connect(
-            lambda tag, url: self._on_check_finished(tag, url, silent)
+            lambda tag: self._on_check_finished(tag, silent)
         )
         self._check_worker.error.connect(
             lambda err: self._on_check_error(err, silent)
         )
         self._check_worker.start()
 
-    def _on_check_finished(self, latest_version: str, download_url: str, silent=False) -> None:
+    def _on_check_finished(self, latest_version: str, silent=False) -> None:
         self._check_btn.setEnabled(True)
-        
+
         norm_latest = latest_version.strip().lower().lstrip('v')
         norm_current = APP_VERSION.strip().lower().lstrip('v')
 
         if norm_latest != norm_current:
             self._status_label.setText(f"Update available: {latest_version}")
             self._status_label.setStyleSheet("color: #4caf50; font-weight: bold;")
-            
-            if sys.platform == "win32":
+
+            if self._run_mode == "frozen_windows":
+                # PyInstaller on Windows: download ZIP + run updater.bat
                 reply = QMessageBox.question(
                     self,
                     "Update Available",
-                    f"There is an update ({latest_version}), want to download and install?",
-                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+                    f"There is an update ({latest_version}). Download and install it now?",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 )
                 if reply == QMessageBox.StandardButton.Yes:
-                    self._download_update(download_url)
-            elif sys.platform.startswith("linux"):
+                    url = "https://github.com/HwGDReqs/HwGDReqs/releases/latest/download/hwgdreqs-windows-portable.zip"
+                    dest = str(exec_dir() / "updater" / "hwgdreqs-windows-portable.zip")
+                    self._download_update(url, dest, mode="windows_bat")
+
+            elif self._run_mode == "frozen_macos":
+                # PyInstaller on macOS: download DMG to ~/Downloads
+                machine = platform.machine().lower()
+                if machine == "arm64" or machine.startswith("arm"):
+                    dmg_name = "hwgdreqs-macos-silicon.dmg"
+                else:
+                    dmg_name = "hwgdreqs-macos-intel.dmg"
+                url = f"https://github.com/HwGDReqs/HwGDReqs/releases/latest/download/{dmg_name}"
+                downloads_dir = Path.home() / "Downloads"
+                downloads_dir.mkdir(parents=True, exist_ok=True)
+                dest_path = downloads_dir / dmg_name
+                # Auto-rename if file already exists
+                counter = 1
+                while dest_path.exists():
+                    stem, suffix = dmg_name.rsplit(".", 1)
+                    dest_path = downloads_dir / f"{stem} ({counter}).{suffix}"
+                    counter += 1
                 reply = QMessageBox.question(
                     self,
                     "Update Available",
-                    f"There is an update ({latest_version}). To update, please run:\n\ncurl https://hwgdreqs.github.io/install.sh | bash\n\nWould you like to copy this command to clipboard?",
-                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+                    f"There is an update ({latest_version}).\nDownload {dmg_name} to your Downloads folder?",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 )
                 if reply == QMessageBox.StandardButton.Yes:
-                    QGuiApplication.clipboard().setText("curl https://hwgdreqs.github.io/install.sh | bash")
+                    self._download_update(url, str(dest_path), mode="macos_dmg")
+
+            elif self._run_mode == "pip":
+                # pip installation: tell the user to run pip upgrade
+                reply = QMessageBox.question(
+                    self,
+                    "Update Available",
+                    f"There is an update ({latest_version}). To update, run:\n\n"
+                    "pip install --upgrade hwgdreqs\n\n"
+                    "Would you like to copy this command to clipboard?",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                )
+                if reply == QMessageBox.StandardButton.Yes:
+                    QGuiApplication.clipboard().setText("pip install --upgrade hwgdreqs")
                     QMessageBox.information(self, "Copied!", "Command copied to clipboard!")
+
             else:
-                QMessageBox.information(
+                # Running from source: tell the user to git pull
+                reply = QMessageBox.question(
                     self,
                     "Update Available",
-                    f"There is an update ({latest_version}). Please update manually.\nIf you installed via pip, run:\n\npip install --upgrade hwgdreqs"
+                    f"There is an update ({latest_version}). Since you are running from source, pull the latest changes:\n\n"
+                    "git pull\n\n"
+                    "Would you like to copy this command to clipboard?",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 )
+                if reply == QMessageBox.StandardButton.Yes:
+                    QGuiApplication.clipboard().setText("git pull")
+                    QMessageBox.information(self, "Copied!", "Command copied to clipboard!")
         else:
             self._status_label.setText("You are running the latest version.")
             self._status_label.setStyleSheet("color: green;")
@@ -652,23 +726,25 @@ class UpdaterTab(QWidget):
                 f"Could not check for updates:\n{error_msg}"
             )
 
-    def _download_update(self, download_url: str) -> None:
+    def _download_update(self, download_url: str, dest_file: str, mode: str = "windows_bat") -> None:
+        """Start downloading the update.
+        
+        mode: 'windows_bat' (extract + run .bat) or 'macos_dmg' (notify user)
+        """
+        self._download_mode = mode
         self._check_btn.setEnabled(False)
         self._status_label.setText("Downloading update...")
         self._status_label.setStyleSheet("color: #007acc;")
 
-        import tempfile
-        tmp_dir = tempfile.gettempdir()
-        dest_file = os.path.join(tmp_dir, "hwgdreqs-windows-portable.zip")
-
-        self._progress_dialog = QProgressDialog("Downloading update...", "Cancel", 0, 100, self)
+        label = "Downloading update..."
+        self._progress_dialog = QProgressDialog(label, "Cancel", 0, 100, self)
         self._progress_dialog.setWindowModality(Qt.WindowModality.WindowModal)
         self._progress_dialog.setMinimumDuration(0)
         self._progress_dialog.setValue(0)
 
         self._download_worker = UpdateDownloadWorker(download_url, dest_file, self)
         self._download_worker.progress.connect(self._progress_dialog.setValue)
-        self._download_worker.finished.connect(self._on_download_finished)
+        self._download_worker.finished.connect(lambda: self._on_download_finished(dest_file))
         self._download_worker.error.connect(self._on_download_error)
 
         self._progress_dialog.canceled.connect(self._cancel_download)
@@ -683,15 +759,28 @@ class UpdaterTab(QWidget):
         self._status_label.setStyleSheet("color: orange;")
         QMessageBox.information(self, "Cancelled", "Update download was cancelled.")
 
-    def _on_download_finished(self) -> None:
+    def _on_download_finished(self, dest_file: str) -> None:
         if self._progress_dialog:
             self._progress_dialog.close()
-        
-        self._status_label.setText("Download complete. Launching updater in 2 seconds...")
-        self._status_label.setStyleSheet("color: green; font-weight: bold;")
-        self._check_btn.setEnabled(False)
 
-        QTimer.singleShot(2000, self._run_updater_and_exit)
+        mode = getattr(self, "_download_mode", "windows_bat")
+
+        if mode == "windows_bat":
+            self._status_label.setText("Download complete. Launching updater in 2 seconds...")
+            self._status_label.setStyleSheet("color: green; font-weight: bold;")
+            self._check_btn.setEnabled(False)
+            QTimer.singleShot(2000, self._run_updater_and_exit)
+        elif mode == "macos_dmg":
+            self._status_label.setText("Download complete! Check your Downloads folder.")
+            self._status_label.setStyleSheet("color: green; font-weight: bold;")
+            self._check_btn.setEnabled(True)
+            QMessageBox.information(
+                self,
+                "Download Complete",
+                f"The update has been downloaded to your Downloads folder:\n"
+                f"{dest_file}\n\n"
+                "Open the DMG file, drag HwGDReqs to Applications, and relaunch the app."
+            )
 
     def _on_download_error(self, error_msg: str) -> None:
         if self._progress_dialog:
@@ -709,10 +798,11 @@ class UpdaterTab(QWidget):
     def _run_updater_and_exit(self) -> None:
         updater_path = exec_dir() / "updater" / "updater.bat"
         try:
-            subprocess.Popen([str(updater_path)], cwd=str(exec_dir()))
+            subprocess.Popen([str(updater_path)], cwd=str(exec_dir()),
+                             creationflags=subprocess.CREATE_NEW_CONSOLE)
         except Exception:
             pass
-        
+
         QApplication.quit()
         sys.exit(0)
 
