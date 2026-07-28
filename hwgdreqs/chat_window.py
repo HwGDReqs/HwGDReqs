@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-import re
-from typing import TYPE_CHECKING
-
 from PySide6.QtCore import Qt, Signal, QPoint
 from PySide6.QtGui import QColor, QFont, QTextCursor, QAction
 from PySide6.QtWidgets import (
@@ -14,27 +11,8 @@ from PySide6.QtWidgets import (
     QPlainTextEdit,
     QPushButton,
     QSizePolicy,
-    QToolTip,
     QVBoxLayout,
-    QWidget,
 )
-
-if TYPE_CHECKING:
-    from hwgdreqs.queue_manager import QueueManager
-
-from hwgdreqs.config import LEVEL_ID_PATTERN
-
-LEVEL_RE = re.compile(LEVEL_ID_PATTERN)
-
-# Individual message block stored alongside its metadata
-
-class ChatMessage:
-    """Stores one chat message with metadata for hover/highlight."""
-
-    def __init__(self, username: str, text: str) -> None:
-        self.username = username
-        self.text = text
-        self.queue_level_ids: list[str] = []
 
 
 class _ChatView(QPlainTextEdit):
@@ -51,91 +29,71 @@ class _ChatView(QPlainTextEdit):
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.customContextMenuRequested.connect(self._on_context_menu_requested)
 
-        self._messages: list[ChatMessage] = []
+        # parallel list: entry i = message at document block i
+        self._usernames: list[str] = []
 
         font = QFont("Segoe UI", 9)
         self.setFont(font)
 
-    # Public helpers
-
-    def add_message(self, msg: ChatMessage) -> None:
-        self._messages.append(msg)
+    def add_message(self, username: str, text: str) -> None:
+        self._usernames.append(username)
 
         cursor = self.textCursor()
         cursor.movePosition(QTextCursor.MoveOperation.End)
-
-        fmt_base = cursor.blockCharFormat()
-        fmt_base.setForeground(QColor("#dddddd"))
 
         fmt_name = cursor.blockCharFormat()
         fmt_name.setForeground(QColor("#9b59b6"))
         fmt_name.setFontWeight(QFont.Weight.Bold)
 
         fmt_text = cursor.blockCharFormat()
-        if msg.queue_level_ids:
-
-            fmt_text.setForeground(QColor("#e74c3c"))
-        else:
-            fmt_text.setForeground(QColor("#dddddd"))
-
+        fmt_text.setForeground(QColor("#dddddd"))
+        fmt_text.setFontWeight(QFont.Weight.Normal)
 
         if self.document().blockCount() > 1 or self.toPlainText():
             cursor.insertBlock()
 
-        cursor.insertText(f"{msg.username}", fmt_name)
-        cursor.insertText(f" {msg.text}", fmt_text)
+        cursor.insertText(username, fmt_name)
+        cursor.insertText(f" {text}", fmt_text)
 
-        # Auto-scroll
         vsb = self.verticalScrollBar()
         vsb.setValue(vsb.maximum())
 
-    def get_message_at_block(self, block_number: int) -> ChatMessage | None:
-        if 0 <= block_number < len(self._messages):
-            return self._messages[block_number]
+    def _username_at_block(self, block_number: int) -> str | None:
+        if 0 <= block_number < len(self._usernames):
+            return self._usernames[block_number]
         return None
-
-    # Events
-
-    def mouseMoveEvent(self, event) -> None:
-        cursor = self.cursorForPosition(event.position().toPoint())
-        block_no = cursor.blockNumber()
-        msg = self.get_message_at_block(block_no)
-        if msg and msg.queue_level_ids:
-            tooltip_text = "\n".join(msg.queue_level_ids)
-            QToolTip.showText(event.globalPosition().toPoint(), tooltip_text, self)
-        else:
-            QToolTip.hideText()
-        super().mouseMoveEvent(event)
 
     def _on_context_menu_requested(self, pos: QPoint) -> None:
         cursor = self.cursorForPosition(pos)
-        block_no = cursor.blockNumber()
-        msg = self.get_message_at_block(block_no)
-        if msg:
-            self.message_right_clicked.emit(msg.username, msg.text, self.mapToGlobal(pos))
+        username = self._username_at_block(cursor.blockNumber())
+        # get the plain text of that block as the message
+        block = self.document().findBlockByNumber(cursor.blockNumber())
+        text = block.text()
+        if username and text:
+            self.message_right_clicked.emit(username, text, self.mapToGlobal(pos))
 
-# Main Chat Window dialog
 
 class ChatWindow(QDialog):
     """
-    A non-modal dialog that shows either Twitch or YouTube live chat messages.
+    Non-modal dialog showing Twitch or YouTube live chat.
+    Create it (hidden) as soon as the worker starts, so it buffers from the beginning.
+    Call .on_message() to append incoming messages.
+    Call .show()/.raise_() to make it visible to the user.
 
     Parameters
     ----------
     platform : "twitch" | "youtube"
-    queue : QueueManager – used to look up level IDs in messages
-    session : TwitchSession | None – needed so we can send messages
-    chat_worker : TwitchChatWorker | YoutubeChatWorker | None
-    can_send : bool – True when chat:edit scope is active (Twitch only)
-    can_ban : bool – True when moderation scope is active (Twitch only)
-    parent : QWidget | None
-    child : no hes an orphan
+    session  : TwitchSession | None   (needed to send/ban on Twitch)
+    chat_worker : worker object with _send_chat_message()
+    can_send : bool  – True when Twitch chat:edit scope is active
+    can_ban  : bool  – True when Twitch moderation scope is active
+    parent   : QWidget | None
+    child    : no he's an orphan
     """
 
     def __init__(
         self,
         platform: str,
-        queue: "QueueManager",
         session=None,
         chat_worker=None,
         can_send: bool = False,
@@ -144,7 +102,6 @@ class ChatWindow(QDialog):
     ) -> None:
         super().__init__(parent)
         self._platform = platform
-        self._queue = queue
         self._session = session
         self._chat_worker = chat_worker
         self._can_send = can_send
@@ -170,7 +127,7 @@ class ChatWindow(QDialog):
         self._view.message_right_clicked.connect(self._on_message_right_clicked)
         layout.addWidget(self._view, stretch=1)
 
-        # Twitch only, when chat:edit
+        # Send bar. Twitch only, when chat:edit scope is on
         if platform == "twitch" and can_send:
             send_layout = QHBoxLayout()
             self._input = QLineEdit()
@@ -186,31 +143,11 @@ class ChatWindow(QDialog):
         else:
             self._input = None
 
-    # Public API – connect the chat worker signals to this
+    # Public API
 
     def on_message(self, username: str, text: str) -> None:
-        msg = ChatMessage(username, text)
-
-        queue_ids = {entry.id for entry in self._queue.levels}
-        tooltip_parts = []
-        for m in LEVEL_RE.finditer(text):
-            lid = m.group(1)
-            if lid in queue_ids:
-                # Find the entry to get name + author
-                for entry in self._queue.levels:
-                    if entry.id == lid:
-                        tooltip_parts.append(f"{entry.name} by {entry.author} (ID: {lid})")
-                        break
-                msg.queue_level_ids.append(f"{lid}")
-
-        # Replace tooltip_parts with richer info
-        if tooltip_parts:
-            msg.queue_level_ids = tooltip_parts
-
-        self._view.add_message(msg)
-
-    def update_queue(self) -> None:
-        pass
+        """Append an incoming message to the log."""
+        self._view.add_message(username, text)
 
     # Internal
     def _send_message(self) -> None:
@@ -219,8 +156,6 @@ class ChatWindow(QDialog):
         raw = self._input.text().strip()
         if not raw:
             return
-        # Replace literal \n with actual newline... Twitch IRC strips newlines
-        # but the worker's safe_message replaces them with spaces, which is fine.
         message = raw.replace("\\n", "\n")
         self._chat_worker._send_chat_message(message)
         self._input.clear()
@@ -247,9 +182,8 @@ class ChatWindow(QDialog):
         from PySide6.QtWidgets import QMessageBox
         from hwgdreqs.twitch_auth import ban_twitch_user
 
-        # Don't allow banning yourself
         if username.lower() == self._session.login.lower():
-            QMessageBox.warning(self, "Ban User", "SON you cant ban yourself😭") # OG
+            QMessageBox.warning(self, "Ban User", "SON you cant ban yourself😭")  # OG
             return
 
         reply = QMessageBox.question(

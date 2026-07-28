@@ -653,6 +653,24 @@ class MainWindow(QMainWindow):
             self._chat_worker.message_received.connect(self._on_twitch_message_received)
             self._chat_worker.start()
             self._twitch_connected = True
+
+            from hwgdreqs.twitch_auth import has_chat_edit_scope, get_channel_moderate_enabled
+            can_send = has_chat_edit_scope()
+            can_ban = get_channel_moderate_enabled()
+            if self._twitch_chat_window is None:
+                self._twitch_chat_window = ChatWindow(
+                    platform="twitch",
+                    session=session,
+                    chat_worker=self._chat_worker,
+                    can_send=can_send,
+                    can_ban=can_ban,
+                    parent=None,
+                )
+            else:
+                self._twitch_chat_window._session = session
+                self._twitch_chat_window._chat_worker = self._chat_worker
+                self._twitch_chat_window._can_send = can_send
+                self._twitch_chat_window._can_ban = can_ban
         
         if self._youtube_session:
             self._youtube_refreshing = True
@@ -698,6 +716,17 @@ class MainWindow(QMainWindow):
             self._youtube_not_streaming = False
             self._youtube_refreshing = False
             self._update_connection_label()
+            if self._youtube_chat_window is None:
+                self._youtube_chat_window = ChatWindow(
+                    platform="youtube",
+                    session=None,
+                    chat_worker=self._youtube_chat_worker,
+                    can_send=False,
+                    can_ban=False,
+                    parent=None,
+                )
+            else:
+                self._youtube_chat_window._chat_worker = self._youtube_chat_worker
     
     def _on_youtube_not_streaming(self) -> None:
         self._youtube_not_streaming = True
@@ -1249,12 +1278,12 @@ class MainWindow(QMainWindow):
         menu = QMenu(self)
 
         twitch_act = QAction("Show Twitch Chat", self)
-        twitch_act.setEnabled(self._chat_worker is not None)
+        twitch_act.setEnabled(self._twitch_chat_window is not None)
         twitch_act.triggered.connect(self._open_twitch_chat)
         menu.addAction(twitch_act)
 
         youtube_act = QAction("Show YouTube Chat", self)
-        youtube_act.setEnabled(self._youtube_chat_worker is not None)
+        youtube_act.setEnabled(self._youtube_chat_window is not None)
         youtube_act.triggered.connect(self._open_youtube_chat)
         menu.addAction(youtube_act)
 
@@ -1262,45 +1291,15 @@ class MainWindow(QMainWindow):
         menu.exec(btn_pos)
 
     def _open_twitch_chat(self) -> None:
-        from hwgdreqs.twitch_auth import has_chat_edit_scope, get_channel_moderate_enabled
-
-        can_send = has_chat_edit_scope()
-        can_ban = get_channel_moderate_enabled()
-
         if self._twitch_chat_window is None:
-            self._twitch_chat_window = ChatWindow(
-                platform="twitch",
-                queue=self._queue,
-                session=self._session,
-                chat_worker=self._chat_worker,
-                can_send=can_send,
-                can_ban=can_ban,
-                parent=None,
-            )
-        else:
-            self._twitch_chat_window._session = self._session
-            self._twitch_chat_window._chat_worker = self._chat_worker
-            self._twitch_chat_window._can_send = can_send
-            self._twitch_chat_window._can_ban = can_ban
-
+            return
         self._twitch_chat_window.show()
         self._twitch_chat_window.raise_()
         self._twitch_chat_window.activateWindow()
 
     def _open_youtube_chat(self) -> None:
         if self._youtube_chat_window is None:
-            self._youtube_chat_window = ChatWindow(
-                platform="youtube",
-                queue=self._queue,
-                session=None,
-                chat_worker=self._youtube_chat_worker,
-                can_send=False,
-                can_ban=False,
-                parent=None,
-            )
-        else:
-            self._youtube_chat_window._chat_worker = self._youtube_chat_worker
-
+            return
         self._youtube_chat_window.show()
         self._youtube_chat_window.raise_()
         self._youtube_chat_window.activateWindow()
