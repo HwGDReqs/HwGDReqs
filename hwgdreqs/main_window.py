@@ -74,6 +74,7 @@ from hwgdreqs.twitch_chat import TwitchChatWorker
 from hwgdreqs.youtube_auth import load_youtube_session, save_youtube_session, YoutubeSession
 from hwgdreqs.youtube_chat import YoutubeChatWorker
 from hwgdreqs.config import asset_path, exec_dir
+from hwgdreqs.chat_window import ChatWindow
 
 
 class DraggableListWidget(QListWidget):
@@ -258,6 +259,9 @@ class MainWindow(QMainWindow):
         self._thumbnail_cache_order: list[str] = []
         self._api_server = ApiServer(queue)
         self._check_update_worker = None
+        # Chat windows, lazily created, kept alive between openings
+        self._twitch_chat_window: ChatWindow | None = None
+        self._youtube_chat_window: ChatWindow | None = None
         
         # Load platform icons
         self._twitch_icon = QIcon(str(asset_path("twitch.svg")))
@@ -280,6 +284,11 @@ class MainWindow(QMainWindow):
         settings_btn = QPushButton("Settings")
         settings_btn.clicked.connect(self._open_settings)
         header.addWidget(settings_btn)
+
+        self._chat_btn = QPushButton("Chat ▾")
+        self._chat_btn.setToolTip("Show chat windows")
+        self._chat_btn.clicked.connect(self._show_chat_menu)
+        header.addWidget(self._chat_btn)
         root.addLayout(header)
 
         content_layout = QHBoxLayout()
@@ -641,6 +650,7 @@ class MainWindow(QMainWindow):
             self._chat_worker.status_changed.connect(self._on_twitch_status_changed)
             self._chat_worker.connection_failed.connect(self._on_chat_failed)
             self._chat_worker.auth_failed.connect(self._on_chat_auth_failed)
+            self._chat_worker.message_received.connect(self._on_twitch_message_received)
             self._chat_worker.start()
             self._twitch_connected = True
         
@@ -650,6 +660,7 @@ class MainWindow(QMainWindow):
             self._youtube_chat_worker.status_changed.connect(self._on_youtube_status_changed)
             self._youtube_chat_worker.connection_failed.connect(self._on_youtube_chat_failed)
             self._youtube_chat_worker.not_streaming.connect(self._on_youtube_not_streaming)
+            self._youtube_chat_worker.message_received.connect(self._on_youtube_message_received)
             self._youtube_chat_worker.start()
         
         self._update_connection_label()
@@ -1029,7 +1040,10 @@ class MainWindow(QMainWindow):
             self._youtube_chat_worker.status_changed.connect(self._on_youtube_status_changed)
             self._youtube_chat_worker.connection_failed.connect(self._on_youtube_chat_failed)
             self._youtube_chat_worker.not_streaming.connect(self._on_youtube_not_streaming)
+            self._youtube_chat_worker.message_received.connect(self._on_youtube_message_received)
             self._youtube_chat_worker.start()
+            if self._youtube_chat_window:
+                self._youtube_chat_window._chat_worker = self._youtube_chat_worker
         else:
             self.statusBar().showMessage("YouTube is not configured.")
         self._update_connection_label()
@@ -1222,7 +1236,81 @@ class MainWindow(QMainWindow):
             self._queue.remove_levels_by_requester(requester)
             QMessageBox.information(self, "Ban & Blacklist Requester", f"Successfully banned & blacklisted '{requester}' and deleted all their levels.")
 
+
+    def _on_twitch_message_received(self, username: str, message: str) -> None:
+        if self._twitch_chat_window:
+            self._twitch_chat_window.on_message(username, message)
+
+    def _on_youtube_message_received(self, username: str, message: str) -> None:
+        if self._youtube_chat_window:
+            self._youtube_chat_window.on_message(username, message)
+
+    def _show_chat_menu(self) -> None:
+        menu = QMenu(self)
+
+        twitch_act = QAction("Show Twitch Chat", self)
+        twitch_act.setEnabled(self._chat_worker is not None)
+        twitch_act.triggered.connect(self._open_twitch_chat)
+        menu.addAction(twitch_act)
+
+        youtube_act = QAction("Show YouTube Chat", self)
+        youtube_act.setEnabled(self._youtube_chat_worker is not None)
+        youtube_act.triggered.connect(self._open_youtube_chat)
+        menu.addAction(youtube_act)
+
+        btn_pos = self._chat_btn.mapToGlobal(self._chat_btn.rect().bottomLeft())
+        menu.exec(btn_pos)
+
+    def _open_twitch_chat(self) -> None:
+        from hwgdreqs.twitch_auth import has_chat_edit_scope, get_channel_moderate_enabled
+
+        can_send = has_chat_edit_scope()
+        can_ban = get_channel_moderate_enabled()
+
+        if self._twitch_chat_window is None:
+            self._twitch_chat_window = ChatWindow(
+                platform="twitch",
+                queue=self._queue,
+                session=self._session,
+                chat_worker=self._chat_worker,
+                can_send=can_send,
+                can_ban=can_ban,
+                parent=None,
+            )
+        else:
+            self._twitch_chat_window._session = self._session
+            self._twitch_chat_window._chat_worker = self._chat_worker
+            self._twitch_chat_window._can_send = can_send
+            self._twitch_chat_window._can_ban = can_ban
+
+        self._twitch_chat_window.show()
+        self._twitch_chat_window.raise_()
+        self._twitch_chat_window.activateWindow()
+
+    def _open_youtube_chat(self) -> None:
+        if self._youtube_chat_window is None:
+            self._youtube_chat_window = ChatWindow(
+                platform="youtube",
+                queue=self._queue,
+                session=None,
+                chat_worker=self._youtube_chat_worker,
+                can_send=False,
+                can_ban=False,
+                parent=None,
+            )
+        else:
+            self._youtube_chat_window._chat_worker = self._youtube_chat_worker
+
+        self._youtube_chat_window.show()
+        self._youtube_chat_window.raise_()
+        self._youtube_chat_window.activateWindow()
+
     def closeEvent(self, event) -> None:
         self._stop_chat()
         self._api_server.stop()
+        # kill chat window
+        if self._twitch_chat_window:
+            self._twitch_chat_window.close()
+        if self._youtube_chat_window:
+            self._youtube_chat_window.close()
         super().closeEvent(event)
