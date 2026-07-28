@@ -655,6 +655,52 @@ class QueueManager(QObject):
         self.save()
         self._notify()
 
+    def move_level_up(self, level_id: str) -> None:
+        levels = list(self._data.levels)
+        for i, entry in enumerate(levels):
+            if entry.id == level_id:
+                if i > 0:
+                    levels[i], levels[i - 1] = levels[i - 1], levels[i]
+                    self._data.levels = levels
+                    self.save()
+                    self._notify()
+                break
+
+    def move_level_down(self, level_id: str) -> None:
+        levels = list(self._data.levels)
+        for i, entry in enumerate(levels):
+            if entry.id == level_id:
+                if i < len(levels) - 1:
+                    levels[i], levels[i + 1] = levels[i + 1], levels[i]
+                    self._data.levels = levels
+                    self.save()
+                    self._notify()
+                break
+
+    def remove_levels_by_requester(self, requester: str) -> None:
+        requester_lower = requester.lower()
+        to_remove = [e for e in self._data.levels if e.requester.lower() == requester_lower]
+        if not to_remove:
+            return
+        self._data.levels = [e for e in self._data.levels if e.requester.lower() != requester_lower]
+        for e in reversed(to_remove):
+            self._data.level_history.insert(0, e)
+            log_level_deleted(e.id, e.name, e.requester)
+        self.save()
+        self._notify()
+
+    def remove_levels_by_author(self, author: str) -> None:
+        author_lower = author.lower()
+        to_remove = [e for e in self._data.levels if e.author.lower() == author_lower]
+        if not to_remove:
+            return
+        self._data.levels = [e for e in self._data.levels if e.author.lower() != author_lower]
+        for e in reversed(to_remove):
+            self._data.level_history.insert(0, e)
+            log_level_deleted(e.id, e.name, e.requester)
+        self.save()
+        self._notify()
+
 
 def add_level_to_queue(
     queue: QueueManager,

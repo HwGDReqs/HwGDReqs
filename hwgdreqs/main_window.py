@@ -2,7 +2,7 @@ import sys
 from collections.abc import Callable
 
 from PySide6.QtCore import QEventLoop, Qt, QThread, Signal, QUrl, QSize, QTimer
-from PySide6.QtGui import QGuiApplication, QPixmap, QFont, QIcon, QKeySequence, QShortcut
+from PySide6.QtGui import QGuiApplication, QPixmap, QFont, QIcon, QKeySequence, QShortcut, QAction
 from PySide6.QtNetwork import QNetworkAccessManager, QNetworkRequest, QNetworkReply
 from PySide6.QtWidgets import (
     QHBoxLayout,
@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
     QDialog,
     QFrame,
     QGridLayout,
+    QMenu,
 )
 
 
@@ -233,6 +234,13 @@ class StatisticsDialog(QDialog):
         main_layout.addLayout(btn_layout)
 
 
+class AutoClearingStatusBar(QStatusBar):
+    def showMessage(self, message: str, timeout: int = 0) -> None:
+        if message and timeout == 0:
+            timeout = 5000
+        super().showMessage(message, timeout)
+
+
 class MainWindow(QMainWindow):
     def __init__(self, queue: QueueManager, parent=None) -> None:
         super().__init__(parent)
@@ -279,6 +287,8 @@ class MainWindow(QMainWindow):
         self._list = DraggableListWidget()
         self._list.currentItemChanged.connect(self._on_selection_changed)
         self._list.model_reordered.connect(self._on_list_reordered)
+        self._list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self._list.customContextMenuRequested.connect(self._show_context_menu)
         content_layout.addWidget(self._list, stretch=2)
         
         self._details_panel = QWidget()
@@ -398,7 +408,7 @@ class MainWindow(QMainWindow):
 
         root.addLayout(actions)
 
-        self.setStatusBar(QStatusBar())
+        self.setStatusBar(AutoClearingStatusBar())
         self._queue.add_listener(self.refresh_queue)
         self._queue.add_listener(self._configure_api_server)
         self.refresh_queue()
@@ -617,6 +627,7 @@ class MainWindow(QMainWindow):
         self._twitch_connected = False
         self._youtube_connected = False
         self._youtube_not_streaming = False
+        self._youtube_refreshing = False
         
         # Always reload YouTube session in case it was just updated in settings
         self._youtube_session = load_youtube_session()
@@ -634,6 +645,7 @@ class MainWindow(QMainWindow):
             self._twitch_connected = True
         
         if self._youtube_session:
+            self._youtube_refreshing = True
             self._youtube_chat_worker = YoutubeChatWorker(self._youtube_session.username, self._queue)
             self._youtube_chat_worker.status_changed.connect(self._on_youtube_status_changed)
             self._youtube_chat_worker.connection_failed.connect(self._on_youtube_chat_failed)
@@ -643,15 +655,20 @@ class MainWindow(QMainWindow):
         self._update_connection_label()
     
     def _update_connection_label(self) -> None:
+        youtube_refreshing = getattr(self, "_youtube_refreshing", False)
 
         if self._twitch_connected and self._youtube_connected:
             label = f"Streamer: {self._session.display_name} (+ YouTube: {self._youtube_session.username})"
+        elif self._twitch_connected and youtube_refreshing:
+            label = f"Streamer: {self._session.display_name} | YouTube refreshing..."
         elif self._twitch_connected and self._youtube_not_streaming:
             label = f"Streamer: {self._session.display_name} | YouTube not streaming"
         elif self._twitch_connected:
             label = f"Streamer: {self._session.display_name}"
         elif self._youtube_connected:
             label = f"Connected to YouTube: {self._youtube_session.username}"
+        elif youtube_refreshing:
+            label = f"YouTube: {self._youtube_session.username} (refreshing...)"
         elif self._youtube_not_streaming:
             label = f"YouTube: {self._youtube_session.username} (not streaming)"
         else:
@@ -668,11 +685,13 @@ class MainWindow(QMainWindow):
         if "Connected to YouTube" in message:
             self._youtube_connected = True
             self._youtube_not_streaming = False
+            self._youtube_refreshing = False
             self._update_connection_label()
     
     def _on_youtube_not_streaming(self) -> None:
         self._youtube_not_streaming = True
         self._youtube_connected = False
+        self._youtube_refreshing = False
         self._update_connection_label()
         
         username = self._youtube_session.username if self._youtube_session else "@youtube"
@@ -695,7 +714,10 @@ class MainWindow(QMainWindow):
         pass
 
     def _on_youtube_chat_failed(self, message: str) -> None:
-        pass
+        self._youtube_connected = False
+        self._youtube_not_streaming = False
+        self._youtube_refreshing = False
+        self._update_connection_label()
 
     def _on_chat_auth_failed(self) -> None:
         self._stop_chat()
@@ -997,9 +1019,11 @@ class MainWindow(QMainWindow):
         
         self._youtube_connected = False
         self._youtube_not_streaming = False
+        self._youtube_refreshing = False
         
         self._youtube_session = load_youtube_session()
         if self._youtube_session:
+            self._youtube_refreshing = True
             self.statusBar().showMessage("Refreshing YouTube chat...")
             self._youtube_chat_worker = YoutubeChatWorker(self._youtube_session.username, self._queue)
             self._youtube_chat_worker.status_changed.connect(self._on_youtube_status_changed)
@@ -1009,6 +1033,194 @@ class MainWindow(QMainWindow):
         else:
             self.statusBar().showMessage("YouTube is not configured.")
         self._update_connection_label()
+
+    def _show_context_menu(self, pos) -> None:
+        item = self._list.itemAt(pos)
+        if not item:
+            return
+        entry = item.data(Qt.ItemDataRole.UserRole)
+        if not entry:
+            return
+
+        self._list.setCurrentItem(item)
+
+        from hwgdreqs.twitch_auth import get_channel_moderate_enabled
+
+        menu = QMenu(self)
+
+        copy_id_act = QAction("copy id", self)
+        copy_id_act.triggered.connect(self._copy_id)
+        menu.addAction(copy_id_act)
+
+        idx = self._list.row(item)
+        move_down_act = QAction("move down", self)
+        move_down_act.setEnabled(idx < self._list.count() - 1)
+        move_down_act.triggered.connect(lambda: self._move_level_down(entry.id))
+        menu.addAction(move_down_act)
+
+        move_up_act = QAction("move up", self)
+        move_up_act.setEnabled(idx > 0)
+        move_up_act.triggered.connect(lambda: self._move_level_up(entry.id))
+        menu.addAction(move_up_act)
+
+        menu.addSeparator()
+
+        copy_req_act = QAction("copy requester", self)
+        copy_req_act.triggered.connect(lambda: self._copy_text(entry.requester, "requester"))
+        menu.addAction(copy_req_act)
+
+        copy_name_act = QAction("copy name", self)
+        copy_name_act.triggered.connect(lambda: self._copy_text(entry.name, "name"))
+        menu.addAction(copy_name_act)
+
+        copy_author_act = QAction("copy author", self)
+        copy_author_act.triggered.connect(lambda: self._copy_text(entry.author, "author"))
+        menu.addAction(copy_author_act)
+
+        menu.addSeparator()
+
+        delete_act = QAction("delete", self)
+        delete_act.triggered.connect(self._delete_selected)
+        menu.addAction(delete_act)
+
+        del_req_act = QAction("delete all same requester", self)
+        del_req_act.triggered.connect(lambda: self._delete_all_same_requester(entry.requester))
+        menu.addAction(del_req_act)
+
+        del_author_act = QAction("delete all same author", self)
+        del_author_act.triggered.connect(lambda: self._delete_all_same_author(entry.author))
+        menu.addAction(del_author_act)
+
+        menu.addSeparator()
+
+        bl_del_act = QAction("Blacklist Requester + Delete All Their Levels", self)
+        bl_del_act.triggered.connect(lambda: self._blacklist_requester_and_delete_levels(entry.requester))
+        menu.addAction(bl_del_act)
+
+        is_twitch = (entry.platform == "twitch")
+        has_moderation = get_channel_moderate_enabled()
+        is_twitch_mod = is_twitch and has_moderation
+
+        ban_del_act = QAction("Ban Requester + Delete All Their Levels(twitch only+moderation on)", self)
+        ban_del_act.setEnabled(is_twitch_mod)
+        ban_del_act.triggered.connect(lambda: self._ban_requester_and_delete_levels(entry.requester))
+        menu.addAction(ban_del_act)
+
+        ban_bl_del_act = QAction("Ban+blacklist Requester + Delete All Their Levels(twitch only+moderation on)", self)
+        ban_bl_del_act.setEnabled(is_twitch_mod)
+        ban_bl_del_act.triggered.connect(lambda: self._ban_blacklist_requester_and_delete_levels(entry.requester))
+        menu.addAction(ban_bl_del_act)
+
+        menu.exec(self._list.mapToGlobal(pos))
+
+    def _copy_text(self, text: str, label: str) -> None:
+        QGuiApplication.clipboard().setText(text)
+        self.statusBar().showMessage(f"Copied {label} to clipboard")
+
+    def _move_level_up(self, level_id: str) -> None:
+        self._queue.move_level_up(level_id)
+
+    def _move_level_down(self, level_id: str) -> None:
+        self._queue.move_level_down(level_id)
+
+    def _delete_all_same_requester(self, requester: str) -> None:
+        reply = QMessageBox.question(
+            self,
+            "Delete All Same Requester",
+            f"Are you sure you want to delete all levels from requester '{requester}'?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            self._queue.remove_levels_by_requester(requester)
+            self.statusBar().showMessage(f"Deleted all levels from '{requester}'")
+
+    def _delete_all_same_author(self, author: str) -> None:
+        reply = QMessageBox.question(
+            self,
+            "Delete All Same Author",
+            f"Are you sure you want to delete all levels from author '{author}'?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            self._queue.remove_levels_by_author(author)
+            self.statusBar().showMessage(f"Deleted all levels from author '{author}'")
+
+    def _blacklist_requester_and_delete_levels(self, requester: str) -> None:
+        reply = QMessageBox.question(
+            self,
+            "Blacklist and Delete Levels",
+            f"Are you sure you want to blacklist '{requester}' and delete all their levels?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            self._queue.blacklist_requester(requester)
+            self._queue.remove_levels_by_requester(requester)
+            self.statusBar().showMessage(f"Blacklisted '{requester}' and deleted their levels")
+
+    def _ban_requester_and_delete_levels(self, requester: str) -> None:
+        session = self._session
+        if not session:
+            QMessageBox.warning(self, "Ban Requester Failed", "No active Twitch session found.")
+            return
+
+        if requester.lower() == session.login.lower():
+            QMessageBox.warning(self, "Ban Requester Failed", "SON you cant ban yourself😭")
+            return
+
+        reply = QMessageBox.question(
+            self,
+            "Ban Requester and Delete Levels",
+            f"Are you sure you want to ban '{requester}' on Twitch and delete all their levels?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        QGuiApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            from hwgdreqs.twitch_auth import ban_twitch_user
+            error = ban_twitch_user(session, requester)
+        finally:
+            QGuiApplication.restoreOverrideCursor()
+
+        if error:
+            QMessageBox.warning(self, "Ban Requester Failed", f"Could not ban {requester}:\n{error}")
+        else:
+            self._queue.remove_levels_by_requester(requester)
+            QMessageBox.information(self, "Ban Requester", f"Successfully banned '{requester}' and deleted all their levels.")
+
+    def _ban_blacklist_requester_and_delete_levels(self, requester: str) -> None:
+        session = self._session
+        if not session:
+            QMessageBox.warning(self, "Ban & Blacklist Requester Failed", "No active Twitch session found.")
+            return
+
+        if requester.lower() == session.login.lower():
+            QMessageBox.warning(self, "Ban & Blacklist Requester Failed", "SON you cant ban yourself😭")
+            return
+
+        reply = QMessageBox.question(
+            self,
+            "Ban & Blacklist Requester",
+            f"Are you sure you want to ban '{requester}' on Twitch, blacklist them locally, and delete all their levels?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        QGuiApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            from hwgdreqs.twitch_auth import ban_twitch_user
+            error = ban_twitch_user(session, requester)
+        finally:
+            QGuiApplication.restoreOverrideCursor()
+
+        if error:
+            QMessageBox.warning(self, "Ban Requester Failed", f"Could not ban {requester}:\n{error}")
+        else:
+            self._queue.blacklist_requester(requester)
+            self._queue.remove_levels_by_requester(requester)
+            QMessageBox.information(self, "Ban & Blacklist Requester", f"Successfully banned & blacklisted '{requester}' and deleted all their levels.")
 
     def closeEvent(self, event) -> None:
         self._stop_chat()
