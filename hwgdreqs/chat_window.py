@@ -224,6 +224,12 @@ class ChatWindow(QDialog):
         message = raw.replace("\\n", "\n")
         self._chat_worker._send_chat_message(message)
         self._input.clear()
+        sender = (
+            self._session.display_name
+            if self._session and self._session.display_name
+            else (self._session.login if self._session else "You")
+        )
+        self.on_message(sender, message)
 
     def _on_message_right_clicked(self, username: str, text: str, global_pos: QPoint) -> None:
         if self._platform != "twitch" or not self._can_ban:
