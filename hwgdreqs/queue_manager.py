@@ -75,6 +75,7 @@ class QueueData:
     twitch_followers_only: bool = False
 
     allow_any_level: bool = False
+    print_full_log_to_console: bool = False
 
 
 
@@ -243,6 +244,21 @@ class QueueManager(QObject):
         self.save()
         self._notify()
 
+    @property
+    def print_full_log_to_console(self) -> bool:
+        return self._data.print_full_log_to_console
+
+    @print_full_log_to_console.setter
+    def print_full_log_to_console(self, value: bool) -> None:
+        self._data.print_full_log_to_console = bool(value)
+        self.save()
+        try:
+            from hwgdreqs.logging_service import update_console_logging
+            update_console_logging(bool(value))
+        except Exception:
+            pass
+        self._notify()
+
 
     def check_and_update_cooldown(self, requester: str) -> bool:
         """Returns True if the requester is NOT on cooldown (and updates their last request time), False otherwise."""
@@ -338,6 +354,7 @@ class QueueManager(QObject):
             twitch_vip_only=bool(raw.get("twitch_vip_only", False)),
             twitch_followers_only=bool(raw.get("twitch_followers_only", False)),
             allow_any_level=bool(raw.get("allow_any_level", False)),
+            print_full_log_to_console=bool(raw.get("print_full_log_to_console", False)),
         )
 
         # Populate missing timestamps
@@ -383,6 +400,7 @@ class QueueManager(QObject):
             "twitch_vip_only": self._data.twitch_vip_only,
             "twitch_followers_only": self._data.twitch_followers_only,
             "allow_any_level": self._data.allow_any_level,
+            "print_full_log_to_console": self._data.print_full_log_to_console,
         }
         queue_file().write_text(json.dumps(payload, indent=2), encoding="utf-8")
         

@@ -171,12 +171,18 @@ class GeneralTab(QWidget):
         )
         layout.addWidget(self._allow_any_level_cb)
 
+        self._print_full_log_cb = QCheckBox("print full log to console (devs only)")
+        self._print_full_log_cb.setChecked(queue.print_full_log_to_console)
+        self._print_full_log_cb.setToolTip("When enabled, logs everything to the console alongside the hwgdreqs.log file.")
+        layout.addWidget(self._print_full_log_cb)
+
         layout.addStretch()
 
     def apply(self) -> None:
         self._queue.thumbnail_cache_size = self._thumb_cache_spinbox.value()
         self._queue.requester_cooldown = self._cooldown_spinbox.value()
         self._queue.allow_any_level = self._allow_any_level_cb.isChecked()
+        self._queue.print_full_log_to_console = self._print_full_log_cb.isChecked()
 
 
 class CommandsTab(QWidget):

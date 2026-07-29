@@ -6,6 +6,26 @@ from pathlib import Path
 from hwgdreqs.config import data_dir
 
 
+def update_console_logging(enabled: bool) -> None:
+    logger = logging.getLogger("hwgdreqs")
+    stream_handlers = [h for h in logger.handlers if isinstance(h, logging.StreamHandler)]
+    
+    if enabled:
+        if not stream_handlers:
+            import sys
+            stream_handler = logging.StreamHandler(sys.stdout)
+            stream_handler.setLevel(logging.INFO)
+            formatter = logging.Formatter(
+                "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+                datefmt="%Y-%m-%d %H:%M:%S",
+            )
+            stream_handler.setFormatter(formatter)
+            logger.addHandler(stream_handler)
+    else:
+        for handler in stream_handlers:
+            logger.removeHandler(handler)
+
+
 def get_logger() -> logging.Logger:
     log_dir = data_dir() / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
@@ -13,21 +33,32 @@ def get_logger() -> logging.Logger:
     log_file = log_dir / "hwgdreqs.log"
 
     logger = logging.getLogger("hwgdreqs")
-    if logger.handlers:
-        return logger
+    
+    has_file_handler = any(isinstance(h, logging.FileHandler) for h in logger.handlers)
+    if not has_file_handler:
+        logger.setLevel(logging.INFO)
 
-    logger.setLevel(logging.INFO)
+        file_handler = logging.FileHandler(log_file, encoding="utf-8")
+        file_handler.setLevel(logging.INFO)
 
-    file_handler = logging.FileHandler(log_file, encoding="utf-8")
-    file_handler.setLevel(logging.INFO)
+        formatter = logging.Formatter(
+            "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
+        )
+        file_handler.setFormatter(formatter)
+        logger.addHandler(file_handler)
 
-    formatter = logging.Formatter(
-        "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-    )
-    file_handler.setFormatter(formatter)
+    print_to_console = False
+    try:
+        from hwgdreqs.config import queue_file
+        path = queue_file()
+        if path.exists():
+            data = json.loads(path.read_text(encoding="utf-8"))
+            print_to_console = bool(data.get("print_full_log_to_console", False))
+    except Exception:
+        pass
 
-    logger.addHandler(file_handler)
+    update_console_logging(print_to_console)
 
     return logger
 
