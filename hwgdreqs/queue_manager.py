@@ -76,6 +76,7 @@ class QueueData:
 
     allow_any_level: bool = False
     print_full_log_to_console: bool = False
+    queue_popout_scale: float = 1.0
 
 
 
@@ -259,6 +260,16 @@ class QueueManager(QObject):
             pass
         self._notify()
 
+    @property
+    def queue_popout_scale(self) -> float:
+        return self._data.queue_popout_scale
+
+    @queue_popout_scale.setter
+    def queue_popout_scale(self, value: float) -> None:
+        self._data.queue_popout_scale = float(value)
+        self.save()
+        # no notify.. not queue data, just UI pref
+
 
     def check_and_update_cooldown(self, requester: str) -> bool:
         """Returns True if the requester is NOT on cooldown (and updates their last request time), False otherwise."""
@@ -355,6 +366,7 @@ class QueueManager(QObject):
             twitch_followers_only=bool(raw.get("twitch_followers_only", False)),
             allow_any_level=bool(raw.get("allow_any_level", False)),
             print_full_log_to_console=bool(raw.get("print_full_log_to_console", False)),
+            queue_popout_scale=float(raw.get("queue_popout_scale", 1.0)),
         )
 
         # Populate missing timestamps
@@ -401,6 +413,7 @@ class QueueManager(QObject):
             "twitch_followers_only": self._data.twitch_followers_only,
             "allow_any_level": self._data.allow_any_level,
             "print_full_log_to_console": self._data.print_full_log_to_console,
+            "queue_popout_scale": self._data.queue_popout_scale,
         }
         queue_file().write_text(json.dumps(payload, indent=2), encoding="utf-8")
         

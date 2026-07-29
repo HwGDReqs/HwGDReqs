@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
     QSizePolicy,
     QProgressDialog,
     QApplication,
+    QSlider,
 )
 
 from hwgdreqs.config import clear_auth, data_dir, asset_path, exec_dir, APP_VERSION
@@ -176,6 +177,30 @@ class GeneralTab(QWidget):
         self._print_full_log_cb.setToolTip("When enabled, logs everything to the console alongside the hwgdreqs.log file.")
         layout.addWidget(self._print_full_log_cb)
 
+        # Queue Popout Scale
+        layout.addSpacing(8)
+        scale_header = QLabel("Queue Popout Window Scale (for OBS capture):")
+        layout.addWidget(scale_header)
+
+        scale_row = QHBoxLayout()
+        self._popout_scale_slider = QSlider(Qt.Orientation.Horizontal)
+        self._popout_scale_slider.setRange(30, 300)
+        self._popout_scale_slider.setSingleStep(5)
+        self._popout_scale_slider.setPageStep(10)
+        self._popout_scale_slider.setTickInterval(50)
+        self._popout_scale_slider.setTickPosition(QSlider.TickPosition.TicksBelow)
+        # convert float [0.3, 3.0] -> int [30, 300]
+        current_scale_pct = max(30, min(300, int(round(queue.queue_popout_scale * 100))))
+        self._popout_scale_slider.setValue(current_scale_pct)
+        self._popout_scale_label = QLabel(f"{current_scale_pct}%")
+        self._popout_scale_label.setFixedWidth(42)
+        self._popout_scale_slider.valueChanged.connect(
+            lambda v: self._popout_scale_label.setText(f"{v}%")
+        )
+        scale_row.addWidget(self._popout_scale_slider)
+        scale_row.addWidget(self._popout_scale_label)
+        layout.addLayout(scale_row)
+
         layout.addStretch()
 
     def apply(self) -> None:
@@ -183,6 +208,7 @@ class GeneralTab(QWidget):
         self._queue.requester_cooldown = self._cooldown_spinbox.value()
         self._queue.allow_any_level = self._allow_any_level_cb.isChecked()
         self._queue.print_full_log_to_console = self._print_full_log_cb.isChecked()
+        self._queue.queue_popout_scale = self._popout_scale_slider.value() / 100.0
 
 
 class CommandsTab(QWidget):

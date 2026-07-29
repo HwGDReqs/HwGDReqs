@@ -75,6 +75,7 @@ from hwgdreqs.youtube_auth import load_youtube_session, save_youtube_session, Yo
 from hwgdreqs.youtube_chat import YoutubeChatWorker
 from hwgdreqs.config import asset_path, exec_dir
 from hwgdreqs.chat_window import ChatWindow
+from hwgdreqs.queue_popout_window import QueuePopoutWindow
 
 
 class DraggableListWidget(QListWidget):
@@ -262,6 +263,8 @@ class MainWindow(QMainWindow):
         # Chat windows, lazily created, kept alive between openings
         self._twitch_chat_window: ChatWindow | None = None
         self._youtube_chat_window: ChatWindow | None = None
+        # Queue popout window
+        self._popout_window: QueuePopoutWindow | None = None
         
         # Load platform icons
         self._twitch_icon = QIcon(str(asset_path("twitch.svg")))
@@ -289,6 +292,12 @@ class MainWindow(QMainWindow):
         self._chat_btn.setToolTip("Show chat windows")
         self._chat_btn.clicked.connect(self._show_chat_menu)
         header.addWidget(self._chat_btn)
+
+        self._popout_btn = QPushButton("popout Queue")
+        self._popout_btn.setToolTip("Open queue popout window (for OBS capture)")
+        self._popout_btn.clicked.connect(self._open_queue_popout)
+        header.addWidget(self._popout_btn)
+
         root.addLayout(header)
 
         content_layout = QHBoxLayout()
@@ -420,6 +429,7 @@ class MainWindow(QMainWindow):
         self.setStatusBar(AutoClearingStatusBar())
         self._queue.add_listener(self.refresh_queue)
         self._queue.add_listener(self._configure_api_server)
+        self._queue.add_listener(self._refresh_popout_if_open)
         self.refresh_queue()
         self._set_action_buttons_enabled(False)
 
@@ -1051,6 +1061,17 @@ class MainWindow(QMainWindow):
         if self._queue.levels:
             self._queue.shuffle_queue()
             self.statusBar().showMessage("Queue shuffled!")
+
+    def _open_queue_popout(self) -> None:
+        if self._popout_window is None:
+            self._popout_window = QueuePopoutWindow(self._queue, parent=None)
+        self._popout_window.show()
+        self._popout_window.raise_()
+        self._popout_window.activateWindow()
+
+    def _refresh_popout_if_open(self) -> None:
+        if self._popout_window is not None and self._popout_window.isVisible():
+            self._popout_window.refresh()
 
     def _refresh_youtube(self) -> None:
         if self._youtube_chat_worker:
