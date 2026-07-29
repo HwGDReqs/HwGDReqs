@@ -81,16 +81,23 @@ def _make_handler(queue: QueueManager, session: TwitchSession | None = None):
                 self._send_json({"level": asdict(levels[0]) if levels else None})
                 return
             if path == "/add":
-                from hwgdreqs.gdbrowser import fetch_level
+                from hwgdreqs.gdbrowser import fetch_level, GDBrowserError, LevelNotFoundError, LevelFetchTimeoutError
                 params = self._params()
                 level_id = params.get("id") or params.get("level_id") or ""
                 if not level_id:
                     self._send_json({"ok": False, "error": "missing_id"}, status=400)
                     return
                 
-                level_data = fetch_level(level_id)
-                if not level_data:
-                    self._send_json({"ok": False, "error": "level_not_found"}, status=404)
+                try:
+                    level_data = fetch_level(level_id)
+                except LevelFetchTimeoutError as e:
+                    self._send_json({"ok": False, "error": str(e)}, status=504)
+                    return
+                except LevelNotFoundError as e:
+                    self._send_json({"ok": False, "error": str(e)}, status=404)
+                    return
+                except GDBrowserError as e:
+                    self._send_json({"ok": False, "error": str(e)}, status=500)
                     return
                 
                 requester = params.get("requester", "API")
@@ -123,7 +130,7 @@ def _make_handler(queue: QueueManager, session: TwitchSession | None = None):
                     self._send_json({"ok": False, "error": "add_failed"}, status=400)
                 return
             if path == "/replace":
-                from hwgdreqs.gdbrowser import fetch_level
+                from hwgdreqs.gdbrowser import fetch_level, GDBrowserError, LevelNotFoundError, LevelFetchTimeoutError
                 params = self._params()
                 old_level_id = params.get("id") or params.get("old_id") or ""
                 new_level_id = params.get("new_id") or params.get("new_level_id") or ""
@@ -131,9 +138,16 @@ def _make_handler(queue: QueueManager, session: TwitchSession | None = None):
                     self._send_json({"ok": False, "error": "missing_id"}, status=400)
                     return
                 
-                level_data = fetch_level(new_level_id)
-                if not level_data:
-                    self._send_json({"ok": False, "error": "level_not_found"}, status=404)
+                try:
+                    level_data = fetch_level(new_level_id)
+                except LevelFetchTimeoutError as e:
+                    self._send_json({"ok": False, "error": str(e)}, status=504)
+                    return
+                except LevelNotFoundError as e:
+                    self._send_json({"ok": False, "error": str(e)}, status=404)
+                    return
+                except GDBrowserError as e:
+                    self._send_json({"ok": False, "error": str(e)}, status=500)
                     return
                 
                 requester = params.get("requester", "API")
