@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 import socket
+import ssl
 import threading
 
 from PySide6.QtCore import QObject, Signal
@@ -71,8 +72,10 @@ class TwitchChatWorker(QObject):
     def _run(self) -> None:
         channel = self._session.login.lower()
         try:
-            self._socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            self._socket.settimeout(30)
+            raw_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            raw_socket.settimeout(30)
+            context = ssl.create_default_context()
+            self._socket = context.wrap_socket(raw_socket, server_hostname=TWITCH_IRC_HOST)
             self._socket.connect((TWITCH_IRC_HOST, TWITCH_IRC_PORT))
             sock = self._socket
             sock.send(
@@ -202,7 +205,7 @@ class TwitchChatWorker(QObject):
                 level_ids.append(lid)
 
         if level_ids:
-            if not self._queue.check_and_update_cooldown(requester):
+            if self._queue.is_on_cooldown(requester):
                 return
             
             # see priority
@@ -217,9 +220,14 @@ class TwitchChatWorker(QObject):
             elif is_sub and self._queue.twitch_sub_priority:
                 priority = True
 
+            added_any = False
             for level_id in level_ids:
                 self.level_detected.emit(requester, level_id)
-                self._enqueue_level(requester, level_id, message, priority=priority)
+                if self._enqueue_level(requester, level_id, message, priority=priority):
+                    added_any = True
+
+            if added_any:
+                self._queue.update_cooldown(requester)
 
     def _handle_commands(self, requester: str, message: str) -> bool:
 
@@ -377,7 +385,7 @@ class TwitchChatWorker(QObject):
         )
         self.status_changed.emit(f"Replaced level {old_level_id} with {new_level_id} for {requester}")
 
-    def _enqueue_level(self, requester: str, level_id: str, message: str, priority: bool = False) -> None:
+    def _enqueue_level(self, requester: str, level_id: str, message: str, priority: bool = False) -> bool:
         try:
             data = fetch_level(level_id)
             difficulty = str(data.get("difficulty", "Unrated"))
@@ -402,10 +410,11 @@ class TwitchChatWorker(QObject):
             )
             if added:
                 self.status_changed.emit(f"Queued: '{data.get('name')}' by '{data.get('author')}' from '{requester}'")
+            return added
         except LevelFetchTimeoutError:
             if not self._queue.allow_any_level:
                 logger.warning(f"Failed to fetch level {level_id} (timeout - gdbrowser took too long)")
-                return
+                return False
             added = self._queue.add_level(
                 level_id=level_id,
                 name=f"⚠️ {level_id}",
@@ -425,11 +434,12 @@ class TwitchChatWorker(QObject):
             )
             if added:
                 self.status_changed.emit(f"Failed to fetch level (timeout - gdbrowser took too long), so added bare ID")
+            return added
         except LevelNotFoundError:
             if not self._queue.allow_any_level:
                 logger.warning(f"Level ID {level_id} not found on Geometry Dash servers")
                 self.status_changed.emit(f"Level ID {level_id} not found on Geometry Dash servers")
-                return
+                return False
             added = self._queue.add_level(
                 level_id=level_id,
                 name=f"⚠️ {level_id}",
@@ -449,10 +459,11 @@ class TwitchChatWorker(QObject):
             )
             if added:
                 self.status_changed.emit(f"Level ID {level_id} not found on Geometry Dash servers, so added bare ID")
+            return added
         except GDBrowserError as e:
             if not self._queue.allow_any_level:
                 logger.warning(f"Failed to fetch level {level_id}: {str(e)}")
-                return
+                return False
             added = self._queue.add_level(
                 level_id=level_id,
                 name=f"⚠️ {level_id}",
@@ -472,4 +483,5 @@ class TwitchChatWorker(QObject):
             )
             if added:
                 self.status_changed.emit(f"Failed to fetch level {level_id} ({str(e)}), so added bare ID")
+            return added
 

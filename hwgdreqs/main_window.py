@@ -457,7 +457,7 @@ class MainWindow(QMainWindow):
         
         self._check_update_worker = UpdateCheckerWorker(self)
         
-        def on_finished(latest_version, download_url):
+        def on_finished(latest_version):
             norm_latest = latest_version.strip().lower().lstrip('v')
             norm_current = APP_VERSION.strip().lower().lstrip('v')
             
@@ -471,6 +471,7 @@ class MainWindow(QMainWindow):
                         QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
                     )
                     if reply == QMessageBox.StandardButton.Yes:
+                        download_url = "https://github.com/HwGDReqs/HwGDReqs/releases/latest/download/hwgdreqs-windows-portable.zip"
                         self._download_update_for_startup(download_url)
                 elif sys.platform.startswith("linux"):
                     reply = QMessageBox.question(

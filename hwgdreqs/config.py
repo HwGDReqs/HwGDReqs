@@ -1,11 +1,13 @@
 import base64
 import json
 import os
+import stat
 import sys
 from pathlib import Path
+from cryptography.fernet import Fernet, InvalidToken
 
 APP_NAME = "HwGDReqs"
-APP_VERSION = "0.14.0"
+APP_VERSION = "0.15.0"
 
 TWITCH_CLIENT_ID = "hq65d75rdxry2cfjgemvydqp2vfr84"
 TWITCH_SCOPES = ["chat:read", "user:read:email", "moderator:read:followers"]
@@ -15,7 +17,7 @@ TWITCH_DEVICE_URL = "https://id.twitch.tv/oauth2/device"
 TWITCH_TOKEN_URL = "https://id.twitch.tv/oauth2/token"
 TWITCH_USERS_URL = "https://api.twitch.tv/helix/users"
 TWITCH_IRC_HOST = "irc.chat.twitch.tv"
-TWITCH_IRC_PORT = 6667
+TWITCH_IRC_PORT = 6697  # SSL port; keeps the oauth token off the wire in plaintext
 
 LEVEL_ID_PATTERN = r"\b(\d{7,9})\b"
 COMMA_LEVEL_ID_PATTERN = r"\b(\d{1,3}(?:,\d{3})+)\b"
@@ -78,17 +80,47 @@ def token_file() -> Path:
     return data_dir() / "auth.dat"
 
 
+def key_file() -> Path:
+    return data_dir() / "auth.key"
+
+
+def _get_or_create_key() -> bytes:
+    path = key_file()
+    if path.exists():
+        return path.read_bytes()
+    key = Fernet.generate_key()
+    path.write_bytes(key)
+    try:
+        # no-op on platforms where chmod doesn't apply (e.g. Windows/NTFS)
+        os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
+    except OSError:
+        pass
+    return key
+
+
 def encode_token(data: dict) -> str:
+    fernet = Fernet(_get_or_create_key())
     raw = json.dumps(data).encode("utf-8")
-    return base64.b64encode(raw).decode("ascii")
+    return fernet.encrypt(raw).decode("ascii")
 
 
 def decode_token(encoded: str) -> dict | None:
+    fernet = Fernet(_get_or_create_key())
+    try:
+        raw = fernet.decrypt(encoded.encode("ascii"))
+        return json.loads(raw.decode("utf-8"))
+    except (InvalidToken, ValueError, json.JSONDecodeError):
+        pass
+
+    # fall back to the old base64-only format so existing installs upgrade...
     try:
         raw = base64.b64decode(encoded.encode("ascii"))
-        return json.loads(raw.decode("utf-8"))
+        data = json.loads(raw.decode("utf-8"))
     except (ValueError, json.JSONDecodeError):
         return None
+
+    save_auth(data)
+    return data
 
 
 def save_auth(data: dict) -> None:

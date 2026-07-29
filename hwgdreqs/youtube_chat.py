@@ -172,7 +172,7 @@ class YoutubeChatWorker(QObject):
             f"Replaced level {old_level_id} with {new_level_id} for {requester}"
         )
 
-    def _enqueue_level(self, requester: str, level_id: str, message: str) -> None:
+    def _enqueue_level(self, requester: str, level_id: str, message: str) -> bool:
         try:
             data = fetch_level(level_id)
             difficulty = str(data.get("difficulty", "Unrated"))
@@ -198,10 +198,11 @@ class YoutubeChatWorker(QObject):
             if added:
                 logger.info(f"Queued: '{data.get('name')}' by '{data.get('author')}' from '{requester}'")
                 self.status_changed.emit(f"Queued: '{data.get('name')}' by '{data.get('author')}' from '{requester}'")
+            return added
         except LevelFetchTimeoutError:
             if not self._queue.allow_any_level:
                 logger.warning(f"Failed to fetch level {level_id} (timeout - gdbrowser took too long)")
-                return
+                return False
             added = self._queue.add_level(
                 level_id=level_id,
                 name=f"⚠️ {level_id}",
@@ -221,11 +222,12 @@ class YoutubeChatWorker(QObject):
             if added:
                 logger.info(f"Failed to fetch level (timeout - gdbrowser took too long), so added bare ID")
                 self.status_changed.emit(f"Failed to fetch level (timeout - gdbrowser took too long), so added bare ID")
+            return added
         except LevelNotFoundError:
             if not self._queue.allow_any_level:
                 logger.warning(f"Level ID {level_id} not found on Geometry Dash servers")
                 self.status_changed.emit(f"Level ID {level_id} not found on Geometry Dash servers")
-                return
+                return False
             added = self._queue.add_level(
                 level_id=level_id,
                 name=f"⚠️ {level_id}",
@@ -245,10 +247,11 @@ class YoutubeChatWorker(QObject):
             if added:
                 logger.info(f"Level ID {level_id} not found on Geometry Dash servers, so added bare ID")
                 self.status_changed.emit(f"Level ID {level_id} not found on Geometry Dash servers, so added bare ID")
+            return added
         except GDBrowserError as e:
             if not self._queue.allow_any_level:
                 logger.warning(f"Failed to fetch level {level_id}: {str(e)}")
-                return
+                return False
             added = self._queue.add_level(
                 level_id=level_id,
                 name=f"⚠️ {level_id}",
@@ -268,6 +271,7 @@ class YoutubeChatWorker(QObject):
             if added:
                 logger.info(f"Failed to fetch level {level_id} ({str(e)}), so added bare ID")
                 self.status_changed.emit(f"Failed to fetch level {level_id} ({str(e)}), so added bare ID")
+            return added
 
     def _run(self) -> None:
         if not YoutubeDL or not pytchat:
@@ -334,12 +338,16 @@ class YoutubeChatWorker(QObject):
                                 level_ids.append(lid)
 
                         if level_ids:
-                            if not self._queue.check_and_update_cooldown(author):
+                            if self._queue.is_on_cooldown(author):
                                 continue
+                            added_any = False
                             for level_id in level_ids:
                                 logger.info(f"Level detected: {level_id} from {author}")
-                                self.level_detected.emit(level_id, author)
-                                self._enqueue_level(author, level_id, message)
+                                self.level_detected.emit(author, level_id)
+                                if self._enqueue_level(author, level_id, message):
+                                    added_any = True
+                            if added_any:
+                                self._queue.update_cooldown(author)
                 except Exception as e:
                     if not self._stop_event.is_set():
                         self.status_changed.emit(f"YouTube chat error: {str(e)}")

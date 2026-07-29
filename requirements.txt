@@ -2,3 +2,4 @@ PySide6
 requests
 yt-dlp
 pytchat
+cryptography

@@ -271,15 +271,20 @@ class QueueManager(QObject):
         # no notify.. not queue data, just UI pref
 
 
-    def check_and_update_cooldown(self, requester: str) -> bool:
-        """Returns True if the requester is NOT on cooldown (and updates their last request time), False otherwise."""
+    def is_on_cooldown(self, requester: str) -> bool:
         if self._data.requester_cooldown <= 0:
-            return True
+            return False
         now = time.time()
         last_time = self._requester_last_request_time.get(requester.lower(), 0.0)
-        if now - last_time < self._data.requester_cooldown:
+        return (now - last_time) < self._data.requester_cooldown
+
+    def update_cooldown(self, requester: str) -> None:
+        self._requester_last_request_time[requester.lower()] = time.time()
+
+    def check_and_update_cooldown(self, requester: str) -> bool:
+        if self.is_on_cooldown(requester):
             return False
-        self._requester_last_request_time[requester.lower()] = now
+        self.update_cooldown(requester)
         return True
 
     def get_requester_level_count(self, requester: str) -> int:
