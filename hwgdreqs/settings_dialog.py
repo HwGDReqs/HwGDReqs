@@ -681,7 +681,7 @@ class UpdaterTab(QWidget):
             self._status_label.setStyleSheet("color: #4caf50; font-weight: bold;")
 
             if self._run_mode == "frozen_windows":
-                # PyInstaller on Windows: download ZIP + run updater.bat
+                # PyInstaller on Windows: download installer and run it
                 reply = QMessageBox.question(
                     self,
                     "Update Available",
@@ -689,9 +689,10 @@ class UpdaterTab(QWidget):
                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 )
                 if reply == QMessageBox.StandardButton.Yes:
-                    url = "https://github.com/HwGDReqs/HwGDReqs/releases/latest/download/hwgdreqs-windows-portable.zip"
-                    dest = str(exec_dir() / "updater" / "hwgdreqs-windows-portable.zip")
-                    self._download_update(url, dest, mode="windows_bat")
+                    import tempfile
+                    url = "https://github.com/HwGDReqs/HwGDReqs/releases/latest/download/HwGDReqs-setup.exe"
+                    dest = str(Path(tempfile.gettempdir()) / "HwGDReqs-setup.exe")
+                    self._download_update(url, dest, mode="windows_installer")
 
             elif self._run_mode == "frozen_macos":
                 # PyInstaller on macOS: download DMG to ~/Downloads
@@ -806,11 +807,11 @@ class UpdaterTab(QWidget):
 
         mode = getattr(self, "_download_mode", "windows_bat")
 
-        if mode == "windows_bat":
-            self._status_label.setText("Download complete. Launching updater in 2 seconds...")
+        if mode == "windows_installer":
+            self._status_label.setText("Download complete. Launching installer in 2 seconds...")
             self._status_label.setStyleSheet("color: green; font-weight: bold;")
             self._check_btn.setEnabled(False)
-            QTimer.singleShot(2000, self._run_updater_and_exit)
+            QTimer.singleShot(2000, lambda: self._run_installer_and_exit(dest_file))
         elif mode == "macos_dmg":
             self._status_label.setText("Download complete! Check your Downloads folder.")
             self._status_label.setStyleSheet("color: green; font-weight: bold;")
@@ -836,11 +837,12 @@ class UpdaterTab(QWidget):
             f"An error occurred while downloading the update:\n{error_msg}"
         )
 
-    def _run_updater_and_exit(self) -> None:
-        updater_path = exec_dir() / "updater" / "updater.bat"
+    def _run_installer_and_exit(self, installer_path: str) -> None:
         try:
-            subprocess.Popen([str(updater_path)], cwd=str(exec_dir()),
-                             creationflags=subprocess.CREATE_NEW_CONSOLE)
+            subprocess.Popen(
+                [installer_path],
+                creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP,
+            )
         except Exception:
             pass
 
@@ -1123,7 +1125,7 @@ class SettingsDialog(QDialog):
             QMessageBox.warning(
                 self,
                 "YouTube Connection",
-                "Please enter your YouTube username.",
+                "Please enter your YouTube username. (dw about the @, I added it for you)",
             )
             return
         

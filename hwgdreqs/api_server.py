@@ -102,9 +102,6 @@ def _make_handler(queue: QueueManager, session: TwitchSession | None = None):
                 
                 requester = params.get("requester", "API")
                 platform = params.get("platform", "custom")
-                # no yt/twitvh
-                if platform.lower() in ["twitch", "youtube"]:
-                    platform = "custom"
                 message = params.get("message", "")
                 
                 success = queue.add_level(

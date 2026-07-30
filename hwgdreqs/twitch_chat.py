@@ -206,6 +206,10 @@ class TwitchChatWorker(QObject):
 
         if level_ids:
             if self._queue.is_on_cooldown(requester):
+                remaining = self._queue.get_remaining_cooldown(requester)
+                self._send_chat_message(
+                    f"[HwGDReqs] @{requester}, you're on cooldown for {remaining} more second{'s' if remaining != 1 else ''}."
+                )
                 return
             
             # see priority
@@ -329,6 +333,9 @@ class TwitchChatWorker(QObject):
                 return
         if not found:
             logger.warning(f"Level {level_id} not found or not requested by {requester}")
+            self._send_chat_message(
+                f"[HwGDReqs] @{requester}, Level not found or you didn't request it"
+            )
 
     def _replace_level_command(self, requester: str, old_level_id: str, new_level_id: str, message: str) -> None:
 
@@ -344,6 +351,9 @@ class TwitchChatWorker(QObject):
         if old_index is None:
             logger.warning(f"Level {old_level_id} not found in queue for {requester}")
             self.status_changed.emit(f"Level {old_level_id} not found in queue for {requester}")
+            self._send_chat_message(
+                f"[HwGDReqs] @{requester}, Level not found or you didn't request it"
+            )
             return
         
         try:

@@ -64,7 +64,7 @@ class QueueData:
     # API settings
     api_local_port: int = 6767
     api_host_to_network: bool = False
-    api_network_port: int = field(default_factory=lambda: random.randint(1024, 65535))
+    api_network_port: int = 6767
 
     # prio + onli
     twitch_sub_priority: bool = False
@@ -278,6 +278,14 @@ class QueueManager(QObject):
         last_time = self._requester_last_request_time.get(requester.lower(), 0.0)
         return (now - last_time) < self._data.requester_cooldown
 
+    def get_remaining_cooldown(self, requester: str) -> int:
+        if self._data.requester_cooldown <= 0:
+            return 0
+        now = time.time()
+        last_time = self._requester_last_request_time.get(requester.lower(), 0.0)
+        remaining = self._data.requester_cooldown - (now - last_time)
+        return max(0, int(remaining))
+
     def update_cooldown(self, requester: str) -> None:
         self._requester_last_request_time[requester.lower()] = time.time()
 
@@ -362,7 +370,7 @@ class QueueManager(QObject):
             requester_cooldown=int(raw.get("requester_cooldown", 0)),
             api_local_port=int(raw.get("api_local_port", 6767)),
             api_host_to_network=bool(raw.get("api_host_to_network", False)),
-            api_network_port=int(raw.get("api_network_port", random.randint(1024, 65535))),
+            api_network_port=int(raw.get("api_network_port", 6767)),
             twitch_sub_priority=bool(raw.get("twitch_sub_priority", False)),
             twitch_vip_priority=bool(raw.get("twitch_vip_priority", False)),
             twitch_mod_priority=bool(raw.get("twitch_mod_priority", False)),
