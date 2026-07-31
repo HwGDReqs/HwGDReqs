@@ -30,7 +30,7 @@ SolidCompression=yes
 Compression=lzma2/ultra64
 InternalCompressLevel=ultra
 WizardSmallImageFile=inno-assets\wizard-small.bmp
-0.17.1
+WizardImageFile=inno-assets\big.bmp
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
