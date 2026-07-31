@@ -3,7 +3,7 @@
 ; Non-commercial use only
 
 #define MyAppName "HwGDReqs"
-#define MyAppVersion "0.18.0"
+#define MyAppVersion "0.17.1"
 #define MyAppPublisher "MalikHw47"
 #define MyAppURL "https://hwgdreqs.github.io"
 #define MyAppExeName "HwGDReqs.exe"
@@ -38,7 +38,7 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [Files]
-Source: "https://github.com/HwGDReqs/HwGDReqs/releases/download/0.18.0/hwgdreqs-windows-portable.zip"; DestDir: "{app}"; DestName: "hwgdreqs-windows-portable.zip"; ExternalSize: "66374861"; Flags: external download extractarchive ignoreversion recursesubdirs createallsubdirs
+Source: "https://github.com/HwGDReqs/HwGDReqs/releases/download/0.17.1/hwgdreqs-windows-portable.zip"; DestDir: "{app}"; DestName: "hwgdreqs-windows-portable.zip"; ExternalSize: "66374861"; Flags: external download extractarchive ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
