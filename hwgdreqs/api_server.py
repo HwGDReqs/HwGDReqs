@@ -10,7 +10,7 @@ from hwgdreqs.queue_manager import QueueManager
 from hwgdreqs.twitch_auth import TwitchSession, get_channel_moderate_enabled, ban_twitch_user
 
 
-def _make_handler(queue: QueueManager, session: TwitchSession | None = None):
+def _make_handler(queue: QueueManager, session: TwitchSession | None = None, chat_callback=None):
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, format: str, *args) -> None:
             return
@@ -243,6 +243,27 @@ def _make_handler(queue: QueueManager, session: TwitchSession | None = None):
                 queue.clear_queue()
                 self._send_json({"ok": True})
                 return
+
+            if path == "/requests-on":
+                params = self._params()
+                queue.requests_enabled = True
+                if params.get("send-twitch", "").lower() == "true" and chat_callback:
+                    chat_callback(True)
+                self._send_json({"ok": True})
+                return
+
+            if path == "/requests-off":
+                params = self._params()
+                queue.requests_enabled = False
+                if params.get("send-twitch", "").lower() == "true" and chat_callback:
+                    chat_callback(False)
+                self._send_json({"ok": True})
+                return
+
+            if path == "/requests-state":
+                self._send_json({"enabled": queue.requests_enabled})
+                return
+
             self._send_json({"ok": False, "error": "not_found"}, status=404)
 
         def do_POST(self) -> None:
@@ -319,6 +340,26 @@ def _make_handler(queue: QueueManager, session: TwitchSession | None = None):
                 self._send_json({"ok": True})
                 return
 
+            if path == "/requests-on":
+                params = self._params()
+                queue.requests_enabled = True
+                if params.get("send-twitch", "").lower() == "true" and chat_callback:
+                    chat_callback(True)
+                self._send_json({"ok": True})
+                return
+
+            if path == "/requests-off":
+                params = self._params()
+                queue.requests_enabled = False
+                if params.get("send-twitch", "").lower() == "true" and chat_callback:
+                    chat_callback(False)
+                self._send_json({"ok": True})
+                return
+
+            if path == "/requests-state":
+                self._send_json({"enabled": queue.requests_enabled})
+                return
+
             self._send_json({"ok": False, "error": "not_found"}, status=404)
 
     return Handler
@@ -335,6 +376,14 @@ class ApiServer:
         self._local_port: int = 6767
         self._host_to_network: bool = False
         self._network_port: int = 0
+        self._chat_callback = None
+
+    def set_chat_callback(self, callback) -> None:
+        self._chat_callback = callback
+
+    def _dispatch_chat_callback(self, enabled: bool) -> None:
+        if self._chat_callback:
+            self._chat_callback(enabled)
 
     def set_config(self, local_port: int, host_to_network: bool, network_port: int) -> None:
         restart = (self._local_port != local_port or \
@@ -358,7 +407,7 @@ class ApiServer:
         if self._local_thread and self._local_thread.is_alive():
             success = True
         else:
-            handler = _make_handler(self._queue, self._session)
+            handler = _make_handler(self._queue, self._session, self._dispatch_chat_callback)
             try:
                 self._local_httpd = ThreadingHTTPServer(("127.0.0.1", self._local_port), handler)
                 self._local_thread = threading.Thread(target=self._local_httpd.serve_forever, daemon=True)
@@ -370,7 +419,7 @@ class ApiServer:
         # network server if on
         if self._host_to_network:
             if not (self._network_thread and self._network_thread.is_alive()):
-                handler = _make_handler(self._queue, self._session)
+                handler = _make_handler(self._queue, self._session, self._dispatch_chat_callback)
                 try:
                     self._network_httpd = ThreadingHTTPServer(("0.0.0.0", self._network_port), handler)
                     self._network_thread = threading.Thread(target=self._network_httpd.serve_forever, daemon=True)

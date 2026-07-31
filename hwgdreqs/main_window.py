@@ -288,6 +288,10 @@ class MainWindow(QMainWindow):
         settings_btn.clicked.connect(self._open_settings)
         header.addWidget(settings_btn)
 
+        self._toggle_requests_btn = QPushButton("Disable requests" if self._queue.requests_enabled else "Enable requests")
+        self._toggle_requests_btn.clicked.connect(self._toggle_requests)
+        header.addWidget(self._toggle_requests_btn)
+
         self._chat_btn = QPushButton("Chat ▾")
         self._chat_btn.setToolTip("Show chat windows")
         self._chat_btn.clicked.connect(self._show_chat_menu)
@@ -394,7 +398,7 @@ class MainWindow(QMainWindow):
         self._blacklist_author_btn = QPushButton("Blacklist Author")
         self._ban_requester_btn = QPushButton("Ban Requester")
         self._shuffle_btn = QPushButton("Shuffle")
-        self._clear_queue_btn = QPushButton("Clear Queue")
+        self._clear_queue_btn = QPushButton("Clear Queue ▾")
 
         for btn in (
             self._copy_btn,
@@ -415,6 +419,21 @@ class MainWindow(QMainWindow):
         self._stats_btn.clicked.connect(self._show_statistics)
         actions.addWidget(self._stats_btn)
 
+        # Build the clear dropdown menu
+        self._clear_menu = QMenu(self)
+        self._clear_all_action = self._clear_menu.addAction("All")
+        self._clear_menu.addSeparator()
+        self._clear_by_requester_action = self._clear_menu.addAction("From (requester)")
+        self._clear_by_author_action = self._clear_menu.addAction("From (author)")
+        self._clear_by_requester_action.setVisible(False)
+        self._clear_by_author_action.setVisible(False)
+
+        self._clear_all_action.triggered.connect(self._queue.clear_queue)
+        self._clear_by_requester_action.triggered.connect(self._clear_from_requester)
+        self._clear_by_author_action.triggered.connect(self._clear_from_author)
+
+        self._clear_queue_btn.clicked.connect(self._show_clear_menu)
+
         self._copy_btn.clicked.connect(self._copy_id)
         self._delete_btn.clicked.connect(self._delete_selected)
         self._blacklist_level_btn.clicked.connect(self._blacklist_level)
@@ -422,7 +441,6 @@ class MainWindow(QMainWindow):
         self._blacklist_author_btn.clicked.connect(self._blacklist_author)
         self._ban_requester_btn.clicked.connect(self._ban_requester)
         self._shuffle_btn.clicked.connect(self._shuffle_queue)
-        self._clear_queue_btn.clicked.connect(self._queue.clear_queue)
 
         root.addLayout(actions)
 
@@ -682,6 +700,16 @@ class MainWindow(QMainWindow):
                 self._twitch_chat_window._chat_worker = self._chat_worker
                 self._twitch_chat_window._can_send = can_send
                 self._twitch_chat_window._can_ban = can_ban
+
+            def _api_requests_chat_callback(enabled: bool) -> None:
+                if self._chat_worker and self._session and self._session.chat_edit_scope:
+                    if enabled:
+                        self._chat_worker._send_chat_message(f"[HwGDReqs] @{self._session.login} has enabled requests, any level sent from now on will be added")
+                    else:
+                        self._chat_worker._send_chat_message(f"[HwGDReqs] @{self._session.login} has disabled requests, any level sent from now on will not be added")
+            self._api_server.set_chat_callback(_api_requests_chat_callback)
+        else:
+            self._api_server.set_chat_callback(None)
         
         if self._youtube_session:
             self._youtube_refreshing = True
@@ -808,6 +836,7 @@ class MainWindow(QMainWindow):
                 index_to_select = self._list.count() - 1
             if index_to_select >= 0:
                 self._list.setCurrentRow(index_to_select)
+        self._toggle_requests_btn.setText("Disable requests" if self._queue.requests_enabled else "Enable requests")
 
     def _selected_entry(self) -> LevelEntry | None:
         item = self._list.currentItem()
@@ -818,7 +847,12 @@ class MainWindow(QMainWindow):
     def _on_selection_changed(self) -> None:
         entry = self._selected_entry()
         self._set_action_buttons_enabled(entry is not None)
+        has_entry = entry is not None
+        self._clear_by_requester_action.setVisible(has_entry)
+        self._clear_by_author_action.setVisible(has_entry)
         if entry:
+            self._clear_by_requester_action.setText(f'From requester "{entry.requester}"')
+            self._clear_by_author_action.setText(f'From author "{entry.author}"')
             self._update_details(entry)
             if entry.platform == "twitch":
                 self._ban_requester_btn.show()
@@ -932,6 +966,20 @@ class MainWindow(QMainWindow):
         self._update_thumbnail()
 
 
+    def _show_clear_menu(self) -> None:
+        btn = self._clear_queue_btn
+        self._clear_menu.exec(btn.mapToGlobal(btn.rect().bottomLeft()))
+
+    def _clear_from_requester(self) -> None:
+        entry = self._selected_entry()
+        if entry:
+            self._queue.clear_by_requester(entry.requester)
+
+    def _clear_from_author(self) -> None:
+        entry = self._selected_entry()
+        if entry:
+            self._queue.clear_by_author(entry.author)
+
     def _set_action_buttons_enabled(self, enabled: bool) -> None:
         for btn in (
             self._copy_btn,
@@ -1016,6 +1064,15 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Ban Requester Failed", f"Could not ban {entry.requester}:\n{error}")
         else:
             QMessageBox.information(self, "Ban Requester", f"Successfully banned '{entry.requester}' on Twitch.")
+
+    def _toggle_requests(self) -> None:
+        self._queue.requests_enabled = not self._queue.requests_enabled
+        self._toggle_requests_btn.setText("Disable requests" if self._queue.requests_enabled else "Enable requests")
+        if self._chat_worker and self._session and self._session.chat_edit_scope:
+            if self._queue.requests_enabled:
+                self._chat_worker._send_chat_message(f"[HwGDReqs] @{self._session.login} has enabled requests, any level sent from now on will be added")
+            else:
+                self._chat_worker._send_chat_message(f"[HwGDReqs] @{self._session.login} has disabled requests, any level sent from now on will not be added")
 
     def _open_settings(self) -> None:
         dialog = SettingsDialog(

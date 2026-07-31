@@ -308,15 +308,23 @@ class LevelHistoryTab(QWidget):
     def __init__(self, queue, parent=None) -> None:
         super().__init__(parent)
         self._queue = queue
-        
+
         layout = QVBoxLayout(self)
+
+        # Search bar
+        self._search_box = QLineEdit()
+        self._search_box.setPlaceholderText("Search history (name, author, requester)…")
+        self._search_box.setClearButtonEnabled(True)
+        self._search_box.textChanged.connect(self._apply_filter)
+        layout.addWidget(self._search_box)
+
         self._list = QListWidget()
         self._list.itemClicked.connect(self._on_item_clicked)
         self._list.itemDoubleClicked.connect(self._on_item_double_clicked)
         layout.addWidget(self._list)
-        
+
         self.refresh()
-    
+
     def refresh(self):
         self._list.clear()
         for entry in self._queue.level_history:
@@ -326,12 +334,26 @@ class LevelHistoryTab(QWidget):
             item.setSizeHint(widget.sizeHint())
             self._list.addItem(item)
             self._list.setItemWidget(item, widget)
-    
+        self._apply_filter(self._search_box.text())
+
+    def _apply_filter(self, text: str) -> None:
+        query = text.strip().lower()
+        for i in range(self._list.count()):
+            item = self._list.item(i)
+            entry = item.data(Qt.ItemDataRole.UserRole)
+            visible = (
+                not query
+                or query in entry.name.lower()
+                or query in entry.author.lower()
+                or query in entry.requester.lower()
+            )
+            item.setHidden(not visible)
+
     def _on_item_clicked(self, item):
         entry = item.data(Qt.ItemDataRole.UserRole)
         if hasattr(self, "_status_label"):
             self._status_label.setText(f'"{entry.requester}" gave it - \'{entry.id}\'')
-    
+
     def _on_item_double_clicked(self, item):
         entry = item.data(Qt.ItemDataRole.UserRole)
         QGuiApplication.clipboard().setText(entry.id)

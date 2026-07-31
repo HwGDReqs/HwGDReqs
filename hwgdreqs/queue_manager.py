@@ -77,6 +77,7 @@ class QueueData:
     allow_any_level: bool = False
     print_full_log_to_console: bool = False
     queue_popout_scale: float = 1.0
+    requests_enabled: bool = True
 
 
 
@@ -252,6 +253,14 @@ class QueueManager(QObject):
     @print_full_log_to_console.setter
     def print_full_log_to_console(self, value: bool) -> None:
         self._data.print_full_log_to_console = bool(value)
+
+    @property
+    def requests_enabled(self) -> bool:
+        return self._data.requests_enabled
+
+    @requests_enabled.setter
+    def requests_enabled(self, value: bool) -> None:
+        self._data.requests_enabled = bool(value)
         self.save()
         try:
             from hwgdreqs.logging_service import update_console_logging
@@ -380,6 +389,7 @@ class QueueManager(QObject):
             allow_any_level=bool(raw.get("allow_any_level", False)),
             print_full_log_to_console=bool(raw.get("print_full_log_to_console", False)),
             queue_popout_scale=float(raw.get("queue_popout_scale", 1.0)),
+            requests_enabled=bool(raw.get("requests_enabled", True)),
         )
 
         # Populate missing timestamps
@@ -427,6 +437,7 @@ class QueueManager(QObject):
             "allow_any_level": self._data.allow_any_level,
             "print_full_log_to_console": self._data.print_full_log_to_console,
             "queue_popout_scale": self._data.queue_popout_scale,
+            "requests_enabled": self._data.requests_enabled,
         }
         queue_file().write_text(json.dumps(payload, indent=2), encoding="utf-8")
         
@@ -483,6 +494,8 @@ class QueueManager(QObject):
         level_id = str(level_id)
         author_lower = author.lower()
         requester_lower = requester.lower()
+        if not self.requests_enabled:
+            return False
 
         if level_id in self._data.blacklist_levels:
             return False
@@ -686,6 +699,22 @@ class QueueManager(QObject):
         self.save()
         self._notify()
         log_queue_cleared()
+
+    def clear_by_requester(self, requester: str) -> None:
+        removed = [e for e in self._data.levels if e.requester.lower() == requester.lower()]
+        kept = [e for e in self._data.levels if e.requester.lower() != requester.lower()]
+        self._data.level_history = removed + self._data.level_history
+        self._data.levels = kept
+        self.save()
+        self._notify()
+
+    def clear_by_author(self, author: str) -> None:
+        removed = [e for e in self._data.levels if e.author.lower() == author.lower()]
+        kept = [e for e in self._data.levels if e.author.lower() != author.lower()]
+        self._data.level_history = removed + self._data.level_history
+        self._data.levels = kept
+        self.save()
+        self._notify()
 
     def reorder_levels(self, new_levels: list[LevelEntry]) -> None:
         self._data.levels = list(new_levels)
