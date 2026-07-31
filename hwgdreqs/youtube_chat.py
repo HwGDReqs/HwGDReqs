@@ -278,86 +278,99 @@ class YoutubeChatWorker(QObject):
             self.connection_failed.emit("YouTube support requires: yt-dlp and pytchat")
             return
 
-        self.status_changed.emit(f"Connecting to YouTube live stream ({self._username})...")
+        while not self._stop_event.is_set():
+            self.status_changed.emit(f"Connecting to YouTube live stream ({self._username})...")
 
-        try:
-            channel_url = f"https://www.youtube.com/{self._username}/live"
-
-            ydl_opts = {
-                "quiet": True,
-                "skip_download": True,
-            }
-
-            with YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(channel_url, download=False)
-
-            if not info.get("is_live"):
-                logger.info(f"YouTube channel {self._username} is not currently live")
-                self.not_streaming.emit()
-                return
-
-            url = info["webpage_url"]
-            self._video_id = info.get("id")
-
-            original_signal = signal.signal
             try:
-                signal.signal = lambda *args: None
-                self._chat = pytchat.create(video_id=self._video_id)
-            finally:
-                signal.signal = original_signal
-            
-            self.status_changed.emit(f"Connected to YouTube live chat ({self._username})")
+                channel_url = f"https://www.youtube.com/{self._username}/live"
 
-            while not self._stop_event.is_set() and self._chat.is_alive():
-                try:
-                    for c in self._chat.get().sync_items():
-                        if self._stop_event.is_set():
-                            break
+                ydl_opts = {
+                    "quiet": True,
+                    "skip_download": True,
+                }
 
-                        author = c.author.name
-                        message = c.message
+                with YoutubeDL(ydl_opts) as ydl:
+                    info = ydl.extract_info(channel_url, download=False)
 
-                        logger.info(f"YouTube Chat [{author}]: {message}")
-                        
-                        self.message_received.emit(author, message)
-
-                        if self._handle_commands(author, message):
-                            continue
-
-                        matches = []
-                        for m in LEVEL_RE.finditer(message):
-                            matches.append((m.start(), m.group(1)))
-                        for m in COMMA_LEVEL_RE.finditer(message):
-                            matches.append((m.start(), m.group(1).replace(",", "")))
-
-                        matches.sort(key=lambda x: x[0])
-                        
-                        level_ids = []
-                        for _, lid in matches:
-                            if lid not in level_ids:
-                                level_ids.append(lid)
-
-                        if level_ids:
-                            if self._queue.is_on_cooldown(author):
-                                continue
-                            added_any = False
-                            for level_id in level_ids:
-                                logger.info(f"Level detected: {level_id} from {author}")
-                                self.level_detected.emit(author, level_id)
-                                if self._enqueue_level(author, level_id, message):
-                                    added_any = True
-                            if added_any:
-                                self._queue.update_cooldown(author)
-                except Exception as e:
-                    if not self._stop_event.is_set():
-                        self.status_changed.emit(f"YouTube chat error: {str(e)}")
-                    break
-
-        except Exception as e:
-            if not self._stop_event.is_set():
-                err_msg = str(e)
-                if "not currently live" in err_msg:
-                    logger.info(f"YouTube channel {self._username} is not currently live (caught: {err_msg})")
+                if not info.get("is_live"):
+                    logger.info(f"YouTube channel {self._username} is not currently live")
                     self.not_streaming.emit()
-                else:
-                    self.connection_failed.emit(f"Failed to connect to YouTube: {err_msg}")
+                    # Wait 6 seconds and try again
+                    self._stop_event.wait(6)
+                    continue
+
+                url = info["webpage_url"]
+                self._video_id = info.get("id")
+
+                try:
+                    self._chat = pytchat.create(video_id=self._video_id, interruptable=False)
+                except TypeError:
+                    original_signal = signal.signal
+                    try:
+                        signal.signal = lambda *args: None
+                        self._chat = pytchat.create(video_id=self._video_id)
+                    finally:
+                        signal.signal = original_signal
+                
+                self.status_changed.emit(f"Connected to YouTube live chat ({self._username})")
+
+                while not self._stop_event.is_set() and self._chat.is_alive():
+                    try:
+                        for c in self._chat.get().sync_items():
+                            if self._stop_event.is_set():
+                                break
+
+                            author = c.author.name
+                            message = c.message
+
+                            logger.info(f"YouTube Chat [{author}]: {message}")
+                            
+                            self.message_received.emit(author, message)
+
+                            if self._handle_commands(author, message):
+                                continue
+
+                            matches = []
+                            for m in LEVEL_RE.finditer(message):
+                                matches.append((m.start(), m.group(1)))
+                            for m in COMMA_LEVEL_RE.finditer(message):
+                                matches.append((m.start(), m.group(1).replace(",", "")))
+
+                            matches.sort(key=lambda x: x[0])
+                            
+                            level_ids = []
+                            for _, lid in matches:
+                                if lid not in level_ids:
+                                    level_ids.append(lid)
+
+                            if level_ids:
+                                if self._queue.is_on_cooldown(author):
+                                    continue
+                                added_any = False
+                                for level_id in level_ids:
+                                    logger.info(f"Level detected: {level_id} from {author}")
+                                    self.level_detected.emit(author, level_id)
+                                    if self._enqueue_level(author, level_id, message):
+                                        added_any = True
+                                if added_any:
+                                    self._queue.update_cooldown(author)
+                    except Exception as e:
+                        if not self._stop_event.is_set():
+                            logger.error(f"YouTube chat error: {str(e)}")
+                            self.status_changed.emit(f"YouTube chat read error: {str(e)}")
+                        break
+                
+                if not self._stop_event.is_set():
+                    self._stop_event.wait(6)
+
+            except Exception as e:
+                if not self._stop_event.is_set():
+                    err_msg = str(e)
+                    if "not currently live" in err_msg:
+                        logger.info(f"YouTube channel {self._username} is not currently live (caught: {err_msg})")
+                        self.not_streaming.emit()
+                    else:
+                        logger.warning(f"Failed to connect to YouTube: {err_msg}")
+                        self.connection_failed.emit(f"Failed to connect to YouTube: {err_msg}")
+                    
+                    self._stop_event.wait(60)

@@ -3,7 +3,7 @@
 ; Non-commercial use only
 
 #define MyAppName "HwGDReqs"
-#define MyAppVersion "0.17.0"
+#define MyAppVersion "0.18.0"
 #define MyAppPublisher "MalikHw47"
 #define MyAppURL "https://hwgdreqs.github.io"
 #define MyAppExeName "HwGDReqs.exe"
@@ -29,8 +29,8 @@ SetupIconFile=assets\logo.ico
 SolidCompression=yes
 Compression=lzma2/ultra64
 InternalCompressLevel=ultra
-WizardStyle=modern dynamic windows11
 WizardSmallImageFile=inno-assets\wizard-small.bmp
+0.18.0
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"

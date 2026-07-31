@@ -768,17 +768,19 @@ class MainWindow(QMainWindow):
                 self._youtube_chat_window._chat_worker = self._youtube_chat_worker
     
     def _on_youtube_not_streaming(self) -> None:
+        was_refreshing = getattr(self, "_youtube_refreshing", False)
         self._youtube_not_streaming = True
         self._youtube_connected = False
         self._youtube_refreshing = False
         self._update_connection_label()
         
-        username = self._youtube_session.username if self._youtube_session else "@youtube"
-        QMessageBox.warning(
-            self,
-            "YouTube Chat",
-            f"you {username} dont appear to be live, when u become live click Refresh Youtube on top right to recheck"
-        )
+        if was_refreshing:
+            username = self._youtube_session.username if self._youtube_session else "@youtube"
+            QMessageBox.warning(
+                self,
+                "YouTube Chat",
+                f"you {username} dont appear to be live, but we'll keep checking in the background."
+            )
 
     def _stop_chat(self) -> None:
         if self._chat_worker:
