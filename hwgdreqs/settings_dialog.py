@@ -746,8 +746,8 @@ class UpdaterTab(QWidget):
                 )
                 if reply == QMessageBox.StandardButton.Yes:
                     import tempfile
-                    url = "https://github.com/HwGDReqs/HwGDReqs/releases/latest/download/HwGDReqs-setup.exe"
-                    dest = str(Path(tempfile.gettempdir()) / "HwGDReqs-setup.exe")
+                    url = "https://github.com/HwGDReqs/HwGDReqs/releases/latest/download/HwGDReqs-setup-online.exe"
+                    dest = str(Path(tempfile.gettempdir()) / "HwGDReqs-setup-online.exe")
                     self._download_update(url, dest, mode="windows_installer")
 
             elif self._run_mode == "frozen_macos":
@@ -824,10 +824,10 @@ class UpdaterTab(QWidget):
                 f"Could not check for updates:\n{error_msg}"
             )
 
-    def _download_update(self, download_url: str, dest_file: str, mode: str = "windows_bat") -> None:
+    def _download_update(self, download_url: str, dest_file: str, mode: str = "windows_installer") -> None:
         """Start downloading the update.
         
-        mode: 'windows_bat' (extract + run .bat) or 'macos_dmg' (notify user)
+        mode: 'windows_installer' (run .exe) or 'macos_dmg' (notify user)
         """
         self._download_mode = mode
         self._check_btn.setEnabled(False)
@@ -861,13 +861,13 @@ class UpdaterTab(QWidget):
         if self._progress_dialog:
             self._progress_dialog.close()
 
-        mode = getattr(self, "_download_mode", "windows_bat")
+        mode = getattr(self, "_download_mode", "windows_installer")
 
         if mode == "windows_installer":
-            self._status_label.setText("Download complete. Launching installer in 2 seconds...")
+            self._status_label.setText("Download complete. Launching installer...")
             self._status_label.setStyleSheet("color: green; font-weight: bold;")
             self._check_btn.setEnabled(False)
-            QTimer.singleShot(2000, lambda: self._run_installer_and_exit(dest_file))
+            self._run_installer_and_exit(dest_file)
         elif mode == "macos_dmg":
             self._status_label.setText("Download complete! Check your Downloads folder.")
             self._status_label.setStyleSheet("color: green; font-weight: bold;")
