@@ -4,7 +4,7 @@ A standalone, read-only window that mirrors the main queue list.
 Designed for OBS window capture – fully resizable, no interaction.
 """
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QSettings
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
     QMainWindow,
@@ -106,6 +106,11 @@ class QueuePopoutWindow(QMainWindow):
         self.setMinimumSize(200, 150)
         self.resize(400, 600)
 
+        self._settings = QSettings()
+        geometry = self._settings.value("popout_geometry")
+        if geometry:
+            self.restoreGeometry(geometry)
+
         central = QWidget()
         self.setCentralWidget(central)
         layout = QVBoxLayout(central)
@@ -155,3 +160,7 @@ class QueuePopoutWindow(QMainWindow):
 
             self._list.addItem(item)
             self._list.setItemWidget(item, widget)
+
+    def closeEvent(self, event):
+        self._settings.setValue("popout_geometry", self.saveGeometry())
+        super().closeEvent(event)
