@@ -266,6 +266,9 @@ class MainWindow(QMainWindow):
         # Queue popout window
         self._popout_window: QueuePopoutWindow | None = None
         
+        self._aredl_cache: dict[str, int] | None = None
+        self._aredl_fetching = False
+        
         # Load platform icons
         self._twitch_icon = QIcon(str(asset_path("twitch.svg")))
         self._youtube_icon = QIcon(str(asset_path("youtube.svg")))
@@ -376,6 +379,12 @@ class MainWindow(QMainWindow):
         self._length_label = QLabel()
         self._length_label.setWordWrap(True)
         scroll_layout.addWidget(self._length_label)
+        scroll_layout.addSpacing(10)
+        
+        self._aredl_rank_label = QLabel()
+        self._aredl_rank_label.setWordWrap(True)
+        self._aredl_rank_label.hide()
+        scroll_layout.addWidget(self._aredl_rank_label)
         scroll_layout.addSpacing(10)
         
         self._tags_label = QLabel()
@@ -888,6 +897,19 @@ class MainWindow(QMainWindow):
         self._message_label.setText(f"message: '{entry.message}'")
         self._length_label.setText(f"length: '{entry.length}'")
         
+        self._aredl_rank_label.hide()
+        if entry.difficulty == "Extreme Demon":
+            if self._aredl_cache is None:
+                self._aredl_rank_label.setText("AREDL Rank: Loading...")
+                self._aredl_rank_label.show()
+                if not getattr(self, "_aredl_fetching", False):
+                    self._fetch_aredl_list()
+            else:
+                rank = self._aredl_cache.get(str(entry.id))
+                if rank:
+                    self._aredl_rank_label.setText(f"AREDL Rank: #{rank}")
+                    self._aredl_rank_label.show()
+        
         tags_text = ""
         if entry.large:
             tags_text += "+40k objs"
@@ -924,6 +946,8 @@ class MainWindow(QMainWindow):
         self._platform_label.clear()
         self._message_label.clear()
         self._length_label.clear()
+        self._aredl_rank_label.clear()
+        self._aredl_rank_label.hide()
         self._tags_label.clear()
         self._thumbnail_label.clear()
         self._thumbnail_label.hide()
@@ -953,6 +977,34 @@ class MainWindow(QMainWindow):
         else:
             self._current_pixmap = None
             self._thumbnail_label.hide()
+        reply.deleteLater()
+
+    def _fetch_aredl_list(self) -> None:
+        self._aredl_fetching = True
+        url = QUrl("https://api.aredl.net/v2/api/aredl/levels")
+        request = QNetworkRequest(url)
+        reply = self._network_manager.get(request)
+        reply.finished.connect(lambda r=reply: self._on_aredl_loaded(r))
+
+    def _on_aredl_loaded(self, reply: QNetworkReply) -> None:
+        self._aredl_fetching = False
+        if reply.error() == QNetworkReply.NetworkError.NoError:
+            try:
+                import json
+                data = json.loads(reply.readAll().data().decode('utf-8'))
+                self._aredl_cache = {}
+                for item in data:
+                    self._aredl_cache[str(item.get("level_id"))] = item.get("position")
+                
+                entry = self._selected_entry()
+                if entry and entry.difficulty == "Extreme Demon":
+                    rank = self._aredl_cache.get(str(entry.id))
+                    if rank:
+                        self._aredl_rank_label.setText(f"AREDL Rank: #{rank}")
+                    else:
+                        self._aredl_rank_label.hide()
+            except Exception as e:
+                print("Failed to parse AREDL API response:", e)
         reply.deleteLater()
 
     def _update_thumbnail(self):
