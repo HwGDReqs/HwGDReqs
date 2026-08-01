@@ -252,6 +252,40 @@ class CommandsTab(QWidget):
         layout.addStretch()
 
 
+class KeybindsTab(QWidget):
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        
+        layout = QVBoxLayout(self)
+        
+        title = QLabel("Application Keybinds")
+        title_font = title.font()
+        title_font.setBold(True)
+        title_font.setPointSize(11)
+        title.setFont(title_font)
+        layout.addWidget(title)
+        layout.addSpacing(10)
+        
+        keybinds = [
+            ("Ctrl+C", "Copy the ID of the currently selected level."),
+            ("Delete", "Delete the currently selected level from the queue."),
+        ]
+        
+        for key, description in keybinds:
+            key_label = QLabel(key)
+            key_font = key_label.font()
+            key_font.setBold(True)
+            key_label.setFont(key_font)
+            layout.addWidget(key_label)
+            
+            desc_label = QLabel(description)
+            desc_label.setWordWrap(True)
+            layout.addWidget(desc_label)
+            layout.addSpacing(10)
+        
+        layout.addStretch()
+
+
 class HistoryListItemWidget(QWidget):
     def __init__(self, entry, parent=None):
         super().__init__(parent)
@@ -1048,6 +1082,9 @@ class SettingsDialog(QDialog):
 
         self._level_history_tab = LevelHistoryTab(queue)
         tabs.addTab(self._level_history_tab, "Level History")
+
+        self._keybinds_tab = KeybindsTab()
+        tabs.addTab(self._keybinds_tab, "Keybinds")
 
         self._info_tab = InfoTab()
         tabs.addTab(self._info_tab, "Info")

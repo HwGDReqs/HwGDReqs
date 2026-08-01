@@ -55,6 +55,7 @@ def main() -> int:
     if not window.startup(report_status if splash else None):
         if splash:
             splash.close()
+        window.close()
         return 0
 
     if splash:

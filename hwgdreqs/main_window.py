@@ -1393,4 +1393,7 @@ class MainWindow(QMainWindow):
             self._twitch_chat_window.close()
         if self._youtube_chat_window:
             self._youtube_chat_window.close()
+        # kill popout window
+        if self._popout_window:
+            self._popout_window.close()
         super().closeEvent(event)
