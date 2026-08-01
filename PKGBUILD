@@ -1,0 +1,45 @@
+# PKGBUILD - HwGDReqs (from source)
+# Maintainer: malikhw <help.malicorporation@gmail.com>
+
+pkgname=hwgdreqs
+pkgver=0.19.1
+pkgrel=1
+pkgdesc="Geometry Dash level request manager for streamers with Twitch and YouTube chat integration"
+arch=('any')
+url="https://github.com/HwGDReqs/HwGDReqs"
+license=('MIT')
+depends=(
+    'python'
+    'python-pyside6'
+    'python-requests'
+    'python-cryptography'
+    'python-pytchat'
+    'python-yt-dlp'
+)
+makedepends=(
+    'python-build'
+    'python-installer'
+    'python-wheel'
+)
+source=("$pkgname-$pkgver.tar.gz::$url/archive/$pkgver.tar.gz")
+sha256sums=('SKIP')
+
+prepare() {
+    cd "$srcdir/$pkgname-$pkgver"
+}
+
+build() {
+    cd "$srcdir/$pkgname-$pkgver"
+    python -m build --wheel --no-isolation
+}
+
+package() {
+    cd "$srcdir/$pkgname-$pkgver"
+    
+    python -m installer --destdir="$pkgdir" dist/*.whl
+    
+    install -Dm644 assets/logo.png "$pkgdir/usr/share/icons/hicolor/256x256/apps/hwgdreqs.png"
+    install -Dm644 assets/logo.ico "$pkgdir/usr/share/icons/hicolor/256x256/apps/hwgdreqs.ico" 2>/dev/null || true
+    
+    install -Dm644 hwgdreqs.desktop "$pkgdir/usr/share/applications/hwgdreqs.desktop"
+}

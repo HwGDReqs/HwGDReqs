@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=HwGDReqs
+Comment=Geometry Dash level request manager for streamers
+Exec=hwgdreqs
+Icon=hwgdreqs
+Terminal=false
+Type=Application
+Categories=Game;Utility;
+StartupWMClass=HwGDReqs
