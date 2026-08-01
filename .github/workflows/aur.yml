@@ -16,13 +16,23 @@ jobs:
           sed -i "s/sha256sums=('.*')/sha256sums=('$SHA256')/g" PKGBUILD
           sed -i "s/sha256sums = .*/sha256sums = $SHA256/g" .SRCINFO
       
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.AUR_SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan aur.archlinux.org >> ~/.ssh/known_hosts
+      
       - name: Push to AUR
-        uses: KSXGitHub/github-actions-deploy-aur@v3
-        with:
-          pkgname: hwgdreqs
-          pkgbuild: ./PKGBUILD
-          srcinfo: ./.SRCINFO
-          commit_username: ${{ secrets.AUR_USERNAME }}
-          commit_email: ${{ secrets.AUR_EMAIL }}
-          ssh_private_key: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
-          commit_message: "Update PKGBUILD"
+        run: |
+          git clone ssh://aur@aur.archlinux.org/hwgdreqs.git aur-repo
+          
+          cp PKGBUILD aur-repo/
+          cp .SRCINFO aur-repo/
+          
+          cd aur-repo
+          git config user.name "${{ secrets.AUR_USERNAME }}"
+          git config user.email "${{ secrets.AUR_EMAIL }}"
+          git add PKGBUILD .SRCINFO
+          git commit -m "Update PKGBUILD"
+          git push
