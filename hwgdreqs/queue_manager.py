@@ -1,9 +1,12 @@
 import json
+import os
+import tempfile
+import threading
 import time
 from dataclasses import asdict, dataclass, field
 from typing import Callable
 
-from PySide6.QtCore import QObject, Signal
+from PySide6.QtCore import QObject, Qt, Signal
 
 from hwgdreqs.config import queue_file
 from hwgdreqs.logging_service import (
@@ -86,182 +89,231 @@ class QueueManager(QObject):
 
     def __init__(self) -> None:
         super().__init__()
+        # Guards all reads/writes of self._data and self._requester_last_request_time,
+        # since QueueManager is mutated concurrently from the Twitch/YouTube chat
+        # worker threads, the API server's per-request threads, and the Qt main thread.
+        self._lock = threading.RLock()
         self._data = QueueData()
         self._requester_last_request_time: dict[str, float] = {}
         self.load()
 
     def add_listener(self, callback: Callable[[], None]) -> None:
-        self.changed.connect(callback)
+        # Threading improvement: QueueManager is mutated from the Twitch/YouTube
+        # chat worker threads and the API server's per-request threads, but
+        # listeners (refresh_queue, popout refresh, etc.) touch Qt widgets and
+        # must only ever run on the main GUI thread. QueuedConnection makes Qt
+        # marshal the call onto QueueManager's own thread (the main thread)
+        # via the event loop instead of invoking it directly on whichever
+        # worker thread called _notify()/emit().
+        self.changed.connect(callback, Qt.ConnectionType.QueuedConnection)
 
     def _notify(self) -> None:
         self.changed.emit()
 
     @property
     def levels(self) -> list[LevelEntry]:
-        return list(self._data.levels)
+        with self._lock:
+            return list(self._data.levels)
 
     @property
     def level_history(self) -> list[LevelEntry]:
-        return list(self._data.level_history)
+        with self._lock:
+            return list(self._data.level_history)
 
     @property
     def blacklist_levels(self) -> list[str]:
-        return list(self._data.blacklist_levels)
+        with self._lock:
+            return list(self._data.blacklist_levels)
 
     @property
     def blacklist_authors(self) -> list[str]:
-        return list(self._data.blacklist_authors)
+        with self._lock:
+            return list(self._data.blacklist_authors)
 
     @property
     def blacklist_requesters(self) -> list[str]:
-        return list(self._data.blacklist_requesters)
+        with self._lock:
+            return list(self._data.blacklist_requesters)
 
     @property
     def allowed_lengths(self) -> list[str]:
-        return list(self._data.allowed_lengths)
+        with self._lock:
+            return list(self._data.allowed_lengths)
 
     @allowed_lengths.setter
     def allowed_lengths(self, value: list[str]) -> None:
-        self._data.allowed_lengths = list(value)
-        self.save()
+        with self._lock:
+            self._data.allowed_lengths = list(value)
+            self.save()
         self._notify()
 
     @property
     def allowed_difficulties(self) -> list[str]:
-        return list(self._data.allowed_difficulties)
+        with self._lock:
+            return list(self._data.allowed_difficulties)
 
     @allowed_difficulties.setter
     def allowed_difficulties(self, value: list[str]) -> None:
-        self._data.allowed_difficulties = list(value)
-        self.save()
+        with self._lock:
+            self._data.allowed_difficulties = list(value)
+            self.save()
         self._notify()
 
     @property
     def no_disliked(self) -> bool:
-        return self._data.no_disliked
+        with self._lock:
+            return self._data.no_disliked
 
     @no_disliked.setter
     def no_disliked(self, value: bool) -> None:
-        self._data.no_disliked = value
-        self.save()
+        with self._lock:
+            self._data.no_disliked = value
+            self.save()
         self._notify()
 
     @property
     def max_levels_per_requester(self) -> int:
-        return self._data.max_levels_per_requester
+        with self._lock:
+            return self._data.max_levels_per_requester
 
     @max_levels_per_requester.setter
     def max_levels_per_requester(self, value: int) -> None:
-        self._data.max_levels_per_requester = value
-        self.save()
+        with self._lock:
+            self._data.max_levels_per_requester = value
+            self.save()
         self._notify()
 
     @property
     def thumbnail_cache_size(self) -> int:
-        return self._data.thumbnail_cache_size
+        with self._lock:
+            return self._data.thumbnail_cache_size
 
     @thumbnail_cache_size.setter
     def thumbnail_cache_size(self, value: int) -> None:
-        self._data.thumbnail_cache_size = int(value)
-        self.save()
+        with self._lock:
+            self._data.thumbnail_cache_size = int(value)
+            self.save()
         self._notify()
 
     @property
     def requester_cooldown(self) -> int:
-        return self._data.requester_cooldown
+        with self._lock:
+            return self._data.requester_cooldown
 
     @requester_cooldown.setter
     def requester_cooldown(self, value: int) -> None:
-        self._data.requester_cooldown = int(value)
-        self.save()
+        with self._lock:
+            self._data.requester_cooldown = int(value)
+            self.save()
         self._notify()
 
     @property
     def twitch_sub_priority(self) -> bool:
-        return self._data.twitch_sub_priority
+        with self._lock:
+            return self._data.twitch_sub_priority
 
     @twitch_sub_priority.setter
     def twitch_sub_priority(self, value: bool) -> None:
-        self._data.twitch_sub_priority = value
-        self.save()
+        with self._lock:
+            self._data.twitch_sub_priority = value
+            self.save()
         self._notify()
 
     @property
     def twitch_vip_priority(self) -> bool:
-        return self._data.twitch_vip_priority
+        with self._lock:
+            return self._data.twitch_vip_priority
 
     @twitch_vip_priority.setter
     def twitch_vip_priority(self, value: bool) -> None:
-        self._data.twitch_vip_priority = value
-        self.save()
+        with self._lock:
+            self._data.twitch_vip_priority = value
+            self.save()
         self._notify()
 
     @property
     def twitch_mod_priority(self) -> bool:
-        return self._data.twitch_mod_priority
+        with self._lock:
+            return self._data.twitch_mod_priority
 
     @twitch_mod_priority.setter
     def twitch_mod_priority(self, value: bool) -> None:
-        self._data.twitch_mod_priority = value
-        self.save()
+        with self._lock:
+            self._data.twitch_mod_priority = value
+            self.save()
         self._notify()
 
     @property
     def twitch_subs_only(self) -> bool:
-        return self._data.twitch_subs_only
+        with self._lock:
+            return self._data.twitch_subs_only
 
     @twitch_subs_only.setter
     def twitch_subs_only(self, value: bool) -> None:
-        self._data.twitch_subs_only = value
-        self.save()
+        with self._lock:
+            self._data.twitch_subs_only = value
+            self.save()
         self._notify()
 
     @property
     def twitch_vip_only(self) -> bool:
-        return self._data.twitch_vip_only
+        with self._lock:
+            return self._data.twitch_vip_only
 
     @twitch_vip_only.setter
     def twitch_vip_only(self, value: bool) -> None:
-        self._data.twitch_vip_only = value
-        self.save()
+        with self._lock:
+            self._data.twitch_vip_only = value
+            self.save()
         self._notify()
 
     @property
     def twitch_followers_only(self) -> bool:
-        return self._data.twitch_followers_only
+        with self._lock:
+            return self._data.twitch_followers_only
 
     @twitch_followers_only.setter
     def twitch_followers_only(self, value: bool) -> None:
-        self._data.twitch_followers_only = value
-        self.save()
+        with self._lock:
+            self._data.twitch_followers_only = value
+            self.save()
         self._notify()
 
     @property
     def allow_any_level(self) -> bool:
-        return self._data.allow_any_level
+        with self._lock:
+            return self._data.allow_any_level
 
     @allow_any_level.setter
     def allow_any_level(self, value: bool) -> None:
-        self._data.allow_any_level = value
-        self.save()
+        with self._lock:
+            self._data.allow_any_level = value
+            self.save()
         self._notify()
 
     @property
     def print_full_log_to_console(self) -> bool:
-        return self._data.print_full_log_to_console
+        with self._lock:
+            return self._data.print_full_log_to_console
 
     @print_full_log_to_console.setter
     def print_full_log_to_console(self, value: bool) -> None:
-        self._data.print_full_log_to_console = bool(value)
+        # H2 fix: this setter previously didn't persist the value at all,
+        # so the toggle silently reverted after an app restart.
+        with self._lock:
+            self._data.print_full_log_to_console = bool(value)
+            self.save()
 
     @property
     def requests_enabled(self) -> bool:
-        return self._data.requests_enabled
+        with self._lock:
+            return self._data.requests_enabled
 
     @requests_enabled.setter
     def requests_enabled(self, value: bool) -> None:
-        self._data.requests_enabled = bool(value)
-        self.save()
+        with self._lock:
+            self._data.requests_enabled = bool(value)
+            self.save()
         try:
             from hwgdreqs.logging_service import update_console_logging
             update_console_logging(bool(value))
@@ -271,61 +323,72 @@ class QueueManager(QObject):
 
     @property
     def queue_popout_scale(self) -> float:
-        return self._data.queue_popout_scale
+        with self._lock:
+            return self._data.queue_popout_scale
 
     @queue_popout_scale.setter
     def queue_popout_scale(self, value: float) -> None:
-        self._data.queue_popout_scale = float(value)
-        self.save()
+        with self._lock:
+            self._data.queue_popout_scale = float(value)
+            self.save()
         # no notify.. not queue data, just UI pref
 
 
     def is_on_cooldown(self, requester: str) -> bool:
-        if self._data.requester_cooldown <= 0:
-            return False
-        now = time.time()
-        last_time = self._requester_last_request_time.get(requester.lower(), 0.0)
-        return (now - last_time) < self._data.requester_cooldown
+        with self._lock:
+            if self._data.requester_cooldown <= 0:
+                return False
+            now = time.time()
+            last_time = self._requester_last_request_time.get(requester.lower(), 0.0)
+            return (now - last_time) < self._data.requester_cooldown
 
     def get_remaining_cooldown(self, requester: str) -> int:
-        if self._data.requester_cooldown <= 0:
-            return 0
-        now = time.time()
-        last_time = self._requester_last_request_time.get(requester.lower(), 0.0)
-        remaining = self._data.requester_cooldown - (now - last_time)
-        return max(0, int(remaining))
+        with self._lock:
+            if self._data.requester_cooldown <= 0:
+                return 0
+            now = time.time()
+            last_time = self._requester_last_request_time.get(requester.lower(), 0.0)
+            remaining = self._data.requester_cooldown - (now - last_time)
+            return max(0, int(remaining))
 
     def update_cooldown(self, requester: str) -> None:
-        self._requester_last_request_time[requester.lower()] = time.time()
+        with self._lock:
+            self._requester_last_request_time[requester.lower()] = time.time()
 
     def check_and_update_cooldown(self, requester: str) -> bool:
-        if self.is_on_cooldown(requester):
-            return False
-        self.update_cooldown(requester)
-        return True
+        with self._lock:
+            if self.is_on_cooldown(requester):
+                return False
+            self.update_cooldown(requester)
+            return True
 
     def get_requester_level_count(self, requester: str) -> int:
-        return self._data.requester_level_counts.get(requester.lower(), 0)
+        with self._lock:
+            return self._data.requester_level_counts.get(requester.lower(), 0)
 
     def increment_requester_level_count(self, requester: str) -> None:
-        key = requester.lower()
-        self._data.requester_level_counts[key] = self._data.requester_level_counts.get(key, 0) + 1
+        with self._lock:
+            key = requester.lower()
+            self._data.requester_level_counts[key] = self._data.requester_level_counts.get(key, 0) + 1
 
     def clear_requester_level_counts(self) -> None:
-        self._data.requester_level_counts.clear()
+        with self._lock:
+            self._data.requester_level_counts.clear()
 
     def load(self) -> None:
         path = queue_file()
         if not path.exists():
-            self._data = QueueData()
+            with self._lock:
+                self._data = QueueData()
             return
         try:
             raw = json.loads(path.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError):
-            self._data = QueueData()
+            with self._lock:
+                self._data = QueueData()
             return
 
-        self._data = QueueData(
+        new_data = QueueData(
             levels=[
                 LevelEntry(
                     id=entry.get("id", ""),
@@ -394,81 +457,115 @@ class QueueManager(QObject):
 
         # Populate missing timestamps
         blacklist_timestamps = raw.get("blacklist_timestamps", {})
-        self._data.blacklist_timestamps = {
+        new_data.blacklist_timestamps = {
             "levels": blacklist_timestamps.get("levels", {}),
             "authors": blacklist_timestamps.get("authors", {}),
             "requesters": blacklist_timestamps.get("requesters", {})
         }
-        for item in self._data.blacklist_levels:
-            if item not in self._data.blacklist_timestamps["levels"]:
-                self._data.blacklist_timestamps["levels"][item] = 0.0
-        for item in self._data.blacklist_authors:
+        for item in new_data.blacklist_levels:
+            if item not in new_data.blacklist_timestamps["levels"]:
+                new_data.blacklist_timestamps["levels"][item] = 0.0
+        for item in new_data.blacklist_authors:
             key = item.lower()
-            if key not in self._data.blacklist_timestamps["authors"]:
-                self._data.blacklist_timestamps["authors"][key] = 0.0
-        for item in self._data.blacklist_requesters:
+            if key not in new_data.blacklist_timestamps["authors"]:
+                new_data.blacklist_timestamps["authors"][key] = 0.0
+        for item in new_data.blacklist_requesters:
             key = item.lower()
-            if key not in self._data.blacklist_timestamps["requesters"]:
-                self._data.blacklist_timestamps["requesters"][key] = 0.0
+            if key not in new_data.blacklist_timestamps["requesters"]:
+                new_data.blacklist_timestamps["requesters"][key] = 0.0
+
+        with self._lock:
+            self._data = new_data
 
     def save(self) -> None:
-        payload = {
-            "levels": [asdict(entry) for entry in self._data.levels],
-            "level_history": [asdict(entry) for entry in self._data.level_history],
-            "blacklist_levels": self._data.blacklist_levels,
-            "blacklist_authors": self._data.blacklist_authors,
-            "blacklist_requesters": self._data.blacklist_requesters,
-            "allowed_lengths": self._data.allowed_lengths,
-            "allowed_difficulties": self._data.allowed_difficulties,
-            "no_disliked": self._data.no_disliked,
-            "max_levels_per_requester": self._data.max_levels_per_requester,
-            "thumbnail_cache_size": self._data.thumbnail_cache_size,
-            "requester_cooldown": self._data.requester_cooldown,
-            "blacklist_timestamps": self._data.blacklist_timestamps,
-            "api_local_port": self._data.api_local_port,
-            "api_host_to_network": self._data.api_host_to_network,
-            "api_network_port": self._data.api_network_port,
-            "twitch_sub_priority": self._data.twitch_sub_priority,
-            "twitch_vip_priority": self._data.twitch_vip_priority,
-            "twitch_mod_priority": self._data.twitch_mod_priority,
-            "twitch_subs_only": self._data.twitch_subs_only,
-            "twitch_vip_only": self._data.twitch_vip_only,
-            "twitch_followers_only": self._data.twitch_followers_only,
-            "allow_any_level": self._data.allow_any_level,
-            "print_full_log_to_console": self._data.print_full_log_to_console,
-            "queue_popout_scale": self._data.queue_popout_scale,
-            "requests_enabled": self._data.requests_enabled,
-        }
-        queue_file().write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        # C2 fix: guard the read of self._data with the lock, and write atomically
+        # (temp file + os.replace) so a crash or concurrent read never observes a
+        # partially-written / corrupted data.json.
+        with self._lock:
+            payload = {
+                "levels": [asdict(entry) for entry in self._data.levels],
+                "level_history": [asdict(entry) for entry in self._data.level_history],
+                "blacklist_levels": self._data.blacklist_levels,
+                "blacklist_authors": self._data.blacklist_authors,
+                "blacklist_requesters": self._data.blacklist_requesters,
+                "allowed_lengths": self._data.allowed_lengths,
+                "allowed_difficulties": self._data.allowed_difficulties,
+                "no_disliked": self._data.no_disliked,
+                "max_levels_per_requester": self._data.max_levels_per_requester,
+                "thumbnail_cache_size": self._data.thumbnail_cache_size,
+                "requester_cooldown": self._data.requester_cooldown,
+                "blacklist_timestamps": self._data.blacklist_timestamps,
+                "api_local_port": self._data.api_local_port,
+                "api_host_to_network": self._data.api_host_to_network,
+                "api_network_port": self._data.api_network_port,
+                "twitch_sub_priority": self._data.twitch_sub_priority,
+                "twitch_vip_priority": self._data.twitch_vip_priority,
+                "twitch_mod_priority": self._data.twitch_mod_priority,
+                "twitch_subs_only": self._data.twitch_subs_only,
+                "twitch_vip_only": self._data.twitch_vip_only,
+                "twitch_followers_only": self._data.twitch_followers_only,
+                "allow_any_level": self._data.allow_any_level,
+                "print_full_log_to_console": self._data.print_full_log_to_console,
+                "queue_popout_scale": self._data.queue_popout_scale,
+                "requests_enabled": self._data.requests_enabled,
+            }
+
+            target_path = queue_file()
+            target_dir = target_path.parent
+            target_dir.mkdir(parents=True, exist_ok=True)
+
+            fd, tmp_path = tempfile.mkstemp(
+                prefix=f".{target_path.name}.",
+                suffix=".tmp",
+                dir=str(target_dir),
+            )
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as f:
+                    json.dump(payload, f, indent=2)
+                    f.flush()
+                    os.fsync(f.fileno())
+                os.replace(tmp_path, target_path)
+            except Exception:
+                try:
+                    os.remove(tmp_path)
+                except OSError:
+                    pass
+                raise
         
     @property
     def api_local_port(self):
-        return self._data.api_local_port
+        with self._lock:
+            return self._data.api_local_port
         
     @api_local_port.setter
     def api_local_port(self, value):
-        self._data.api_local_port = value
-        self.save()
+        with self._lock:
+            self._data.api_local_port = value
+            self.save()
         self._notify()
         
     @property
     def api_host_to_network(self):
-        return self._data.api_host_to_network
+        with self._lock:
+            return self._data.api_host_to_network
         
     @api_host_to_network.setter
     def api_host_to_network(self, value):
-        self._data.api_host_to_network = value
-        self.save()
+        with self._lock:
+            self._data.api_host_to_network = value
+            self.save()
         self._notify()
         
     @property
     def api_network_port(self):
-        return self._data.api_network_port
+        with self._lock:
+            return self._data.api_network_port
         
     @api_network_port.setter
     def api_network_port(self, value):
-        self._data.api_network_port = value
-        self.save()
+        with self._lock:
+            self._data.api_network_port = value
+            self.save()
         self._notify()
 
     def add_level(
@@ -494,78 +591,82 @@ class QueueManager(QObject):
         level_id = str(level_id)
         author_lower = author.lower()
         requester_lower = requester.lower()
-        if not self.requests_enabled:
-            return False
 
-        if level_id in self._data.blacklist_levels:
-            return False
-        if author_lower in [a.lower() for a in self._data.blacklist_authors]:
-            return False
-        if requester_lower in [r.lower() for r in self._data.blacklist_requesters]:
-            return False
-        if any(entry.id == level_id for entry in self._data.levels):
-            return False
-        if not self._data.allow_any_level:
-            if difficulty not in self._data.allowed_difficulties:
+        with self._lock:
+            if not self._data.requests_enabled:
                 return False
-            if length and length not in self._data.allowed_lengths:
-                return False
-            if self._data.no_disliked and disliked:
-                return False
-        
-        if self._data.max_levels_per_requester > 0:
-            if self.get_requester_level_count(requester) >= self._data.max_levels_per_requester:
-                return False
-        
-        if timestamp is None:
-            timestamp = time.time()
 
-        entry = LevelEntry(
-            id=level_id,
-            name=name,
-            author=author,
-            difficulty=difficulty,
-            requester=requester,
-            platform=platform,
-            message=message,
-            description=description,
-            length=length,
-            large=large,
-            two_player=two_player,
-            timestamp=timestamp,
-            likes=likes,
-            downloads=downloads,
-            disliked=disliked,
-            priority=priority,
-        )
+            if level_id in self._data.blacklist_levels:
+                return False
+            if author_lower in [a.lower() for a in self._data.blacklist_authors]:
+                return False
+            if requester_lower in [r.lower() for r in self._data.blacklist_requesters]:
+                return False
+            if any(entry.id == level_id for entry in self._data.levels):
+                return False
+            if not self._data.allow_any_level:
+                if difficulty not in self._data.allowed_difficulties:
+                    return False
+                if length and length not in self._data.allowed_lengths:
+                    return False
+                if self._data.no_disliked and disliked:
+                    return False
 
-        if priority:
-            insert_idx = 0
-            for idx, e in enumerate(self._data.levels):
-                if e.priority:
-                    insert_idx = idx + 1
-            self._data.levels.insert(insert_idx, entry)
-        else:
-            self._data.levels.append(entry)
+            if self._data.max_levels_per_requester > 0:
+                if self.get_requester_level_count(requester) >= self._data.max_levels_per_requester:
+                    return False
 
-        self.increment_requester_level_count(requester)
-        self.save()
+            if timestamp is None:
+                timestamp = time.time()
+
+            entry = LevelEntry(
+                id=level_id,
+                name=name,
+                author=author,
+                difficulty=difficulty,
+                requester=requester,
+                platform=platform,
+                message=message,
+                description=description,
+                length=length,
+                large=large,
+                two_player=two_player,
+                timestamp=timestamp,
+                likes=likes,
+                downloads=downloads,
+                disliked=disliked,
+                priority=priority,
+            )
+
+            if priority:
+                insert_idx = 0
+                for idx, e in enumerate(self._data.levels):
+                    if e.priority:
+                        insert_idx = idx + 1
+                self._data.levels.insert(insert_idx, entry)
+            else:
+                self._data.levels.append(entry)
+
+            self.increment_requester_level_count(requester)
+            self.save()
+
         self._notify()
-        
         log_level_added(level_id, name, requester, platform)
         return True
 
     def remove_level(self, level_id: str) -> None:
-        level_to_remove = None
-        for e in self._data.levels:
-            if e.id == level_id:
-                level_to_remove = e
-                break
-        
-        self._data.levels = [e for e in self._data.levels if e.id != level_id]
-        if level_to_remove:
-            self._data.level_history.insert(0, level_to_remove)
-        self.save()
+        with self._lock:
+            level_to_remove = None
+            for e in self._data.levels:
+                if e.id == level_id:
+                    level_to_remove = e
+                    break
+
+            self._data.levels = [e for e in self._data.levels if e.id != level_id]
+            if level_to_remove:
+                self._data.level_history.insert(0, level_to_remove)
+            self.save()
+
         self._notify()
         
         if level_to_remove:
@@ -592,187 +693,231 @@ class QueueManager(QObject):
         downloads: int = 0,
     ) -> None:
 
-        old_index = None
-        old_level = None
-        for i, entry in enumerate(self._data.levels):
-            if entry.id == old_level_id:
-                old_index = i
-                old_level = entry
-                break
-        
-        if old_index is None:
-            return
-        
-        if timestamp is None:
-            timestamp = old_level.timestamp if old_level else time.time()
+        with self._lock:
+            old_index = None
+            old_level = None
+            for i, entry in enumerate(self._data.levels):
+                if entry.id == old_level_id:
+                    old_index = i
+                    old_level = entry
+                    break
 
-        entry = LevelEntry(
-            id=level_id,
-            name=name,
-            author=author,
-            difficulty=difficulty,
-            requester=requester,
-            platform=platform,
-            message=message,
-            description=description,
-            length=length,
-            large=large,
-            two_player=two_player,
-            timestamp=timestamp,
-            likes=likes,
-            downloads=downloads,
-            disliked=disliked,
-        )
-        
-        self._data.levels[old_index] = entry
-        self.save()
+            if old_index is None:
+                return
+
+            if timestamp is None:
+                timestamp = old_level.timestamp if old_level else time.time()
+
+            entry = LevelEntry(
+                id=level_id,
+                name=name,
+                author=author,
+                difficulty=difficulty,
+                requester=requester,
+                platform=platform,
+                message=message,
+                description=description,
+                length=length,
+                large=large,
+                two_player=two_player,
+                timestamp=timestamp,
+                likes=likes,
+                downloads=downloads,
+                disliked=disliked,
+                # H3 fix: preserve the priority flag from the level being replaced,
+                # instead of silently defaulting to False.
+                priority=old_level.priority if old_level else False,
+            )
+
+            self._data.levels[old_index] = entry
+            self.save()
+
         self._notify()
-        
         if old_level:
             log_level_swapped(old_level.id, old_level.name, level_id, name)
 
     def blacklist_level(self, level_id: str) -> None:
-        level_name = None
-        for e in self._data.levels:
-            if e.id == level_id:
-                level_name = e.name
-                break
-        
-        if level_id not in self._data.blacklist_levels:
-            self._data.blacklist_levels.append(level_id)
-            self._data.blacklist_timestamps["levels"][level_id] = time.time()
-            self.save()
-            self._notify()
-            if level_name:
-                log_level_blacklisted(level_id, level_name)
+        with self._lock:
+            level_name = None
+            for e in self._data.levels:
+                if e.id == level_id:
+                    level_name = e.name
+                    break
+
+            if level_id not in self._data.blacklist_levels:
+                self._data.blacklist_levels.append(level_id)
+                self._data.blacklist_timestamps["levels"][level_id] = time.time()
+                self.save()
+            else:
+                return
+
+        self._notify()
+        if level_name:
+            log_level_blacklisted(level_id, level_name)
 
     def blacklist_author(self, author: str) -> None:
-        key = author.lower()
-        if key not in [a.lower() for a in self._data.blacklist_authors]:
+        with self._lock:
+            key = author.lower()
+            if key in [a.lower() for a in self._data.blacklist_authors]:
+                return
             self._data.blacklist_authors.append(author)
             self._data.blacklist_timestamps["authors"][key] = time.time()
             self.save()
-            self._notify()
-            log_author_blacklisted(author)
+
+        self._notify()
+        log_author_blacklisted(author)
 
     def blacklist_requester(self, requester: str) -> None:
-        key = requester.lower()
-        if key not in [r.lower() for r in self._data.blacklist_requesters]:
+        with self._lock:
+            key = requester.lower()
+            if key in [r.lower() for r in self._data.blacklist_requesters]:
+                return
             self._data.blacklist_requesters.append(requester)
             self._data.blacklist_timestamps["requesters"][key] = time.time()
             self.save()
-            self._notify()
-            log_requester_blacklisted(requester)
+
+        self._notify()
+        log_requester_blacklisted(requester)
 
     def remove_blacklist_level(self, level_id: str) -> None:
-        self._data.blacklist_levels = [
-            lid for lid in self._data.blacklist_levels if lid != level_id
-        ]
-        self._data.blacklist_timestamps["levels"].pop(level_id, None)
-        self.save()
+        with self._lock:
+            self._data.blacklist_levels = [
+                lid for lid in self._data.blacklist_levels if lid != level_id
+            ]
+            self._data.blacklist_timestamps["levels"].pop(level_id, None)
+            self.save()
+
         self._notify()
         log_level_unblacklisted(level_id)
 
     def remove_blacklist_author(self, author: str) -> None:
-        key = author.lower()
-        self._data.blacklist_authors = [
-            a for a in self._data.blacklist_authors if a.lower() != key
-        ]
-        self._data.blacklist_timestamps["authors"].pop(key, None)
-        self.save()
+        with self._lock:
+            key = author.lower()
+            self._data.blacklist_authors = [
+                a for a in self._data.blacklist_authors if a.lower() != key
+            ]
+            self._data.blacklist_timestamps["authors"].pop(key, None)
+            self.save()
+
         self._notify()
         log_author_unblacklisted(author)
 
     def remove_blacklist_requester(self, requester: str) -> None:
-        key = requester.lower()
-        self._data.blacklist_requesters = [
-            r for r in self._data.blacklist_requesters if r.lower() != key
-        ]
-        self._data.blacklist_timestamps["requesters"].pop(key, None)
-        self.save()
+        with self._lock:
+            key = requester.lower()
+            self._data.blacklist_requesters = [
+                r for r in self._data.blacklist_requesters if r.lower() != key
+            ]
+            self._data.blacklist_timestamps["requesters"].pop(key, None)
+            self.save()
+
         self._notify()
         log_requester_unblacklisted(requester)
 
     def clear_queue(self) -> None:
-        self._data.level_history = self._data.levels + self._data.level_history
-        self._data.levels = []
-        self.save()
+        with self._lock:
+            self._data.level_history = self._data.levels + self._data.level_history
+            self._data.levels = []
+            self.save()
+
         self._notify()
         log_queue_cleared()
 
     def clear_by_requester(self, requester: str) -> None:
-        removed = [e for e in self._data.levels if e.requester.lower() == requester.lower()]
-        kept = [e for e in self._data.levels if e.requester.lower() != requester.lower()]
-        self._data.level_history = removed + self._data.level_history
-        self._data.levels = kept
-        self.save()
+        with self._lock:
+            removed = [e for e in self._data.levels if e.requester.lower() == requester.lower()]
+            kept = [e for e in self._data.levels if e.requester.lower() != requester.lower()]
+            self._data.level_history = removed + self._data.level_history
+            self._data.levels = kept
+            self.save()
+
         self._notify()
 
     def clear_by_author(self, author: str) -> None:
-        removed = [e for e in self._data.levels if e.author.lower() == author.lower()]
-        kept = [e for e in self._data.levels if e.author.lower() != author.lower()]
-        self._data.level_history = removed + self._data.level_history
-        self._data.levels = kept
-        self.save()
+        with self._lock:
+            removed = [e for e in self._data.levels if e.author.lower() == author.lower()]
+            kept = [e for e in self._data.levels if e.author.lower() != author.lower()]
+            self._data.level_history = removed + self._data.level_history
+            self._data.levels = kept
+            self.save()
+
         self._notify()
 
     def reorder_levels(self, new_levels: list[LevelEntry]) -> None:
-        self._data.levels = list(new_levels)
-        self.save()
+        with self._lock:
+            self._data.levels = list(new_levels)
+            self.save()
+
         self._notify()
 
     def shuffle_queue(self) -> None:
-        shuffled = list(self._data.levels)
-        random.shuffle(shuffled)
-        self._data.levels = shuffled
-        self.save()
+        with self._lock:
+            shuffled = list(self._data.levels)
+            random.shuffle(shuffled)
+            self._data.levels = shuffled
+            self.save()
+
         self._notify()
 
     def move_level_up(self, level_id: str) -> None:
-        levels = list(self._data.levels)
-        for i, entry in enumerate(levels):
-            if entry.id == level_id:
-                if i > 0:
-                    levels[i], levels[i - 1] = levels[i - 1], levels[i]
-                    self._data.levels = levels
-                    self.save()
-                    self._notify()
-                break
+        with self._lock:
+            levels = list(self._data.levels)
+            moved = False
+            for i, entry in enumerate(levels):
+                if entry.id == level_id:
+                    if i > 0:
+                        levels[i], levels[i - 1] = levels[i - 1], levels[i]
+                        self._data.levels = levels
+                        self.save()
+                        moved = True
+                    break
+        if moved:
+            self._notify()
 
     def move_level_down(self, level_id: str) -> None:
-        levels = list(self._data.levels)
-        for i, entry in enumerate(levels):
-            if entry.id == level_id:
-                if i < len(levels) - 1:
-                    levels[i], levels[i + 1] = levels[i + 1], levels[i]
-                    self._data.levels = levels
-                    self.save()
-                    self._notify()
-                break
+        with self._lock:
+            levels = list(self._data.levels)
+            moved = False
+            for i, entry in enumerate(levels):
+                if entry.id == level_id:
+                    if i < len(levels) - 1:
+                        levels[i], levels[i + 1] = levels[i + 1], levels[i]
+                        self._data.levels = levels
+                        self.save()
+                        moved = True
+                    break
+        if moved:
+            self._notify()
 
     def remove_levels_by_requester(self, requester: str) -> None:
-        requester_lower = requester.lower()
-        to_remove = [e for e in self._data.levels if e.requester.lower() == requester_lower]
-        if not to_remove:
-            return
-        self._data.levels = [e for e in self._data.levels if e.requester.lower() != requester_lower]
-        for e in reversed(to_remove):
-            self._data.level_history.insert(0, e)
-            log_level_deleted(e.id, e.name, e.requester)
-        self.save()
+        with self._lock:
+            requester_lower = requester.lower()
+            to_remove = [e for e in self._data.levels if e.requester.lower() == requester_lower]
+            if not to_remove:
+                return
+            self._data.levels = [e for e in self._data.levels if e.requester.lower() != requester_lower]
+            for e in reversed(to_remove):
+                self._data.level_history.insert(0, e)
+            self.save()
+
         self._notify()
+        for e in reversed(to_remove):
+            log_level_deleted(e.id, e.name, e.requester)
 
     def remove_levels_by_author(self, author: str) -> None:
-        author_lower = author.lower()
-        to_remove = [e for e in self._data.levels if e.author.lower() == author_lower]
-        if not to_remove:
-            return
-        self._data.levels = [e for e in self._data.levels if e.author.lower() != author_lower]
-        for e in reversed(to_remove):
-            self._data.level_history.insert(0, e)
-            log_level_deleted(e.id, e.name, e.requester)
-        self.save()
+        with self._lock:
+            author_lower = author.lower()
+            to_remove = [e for e in self._data.levels if e.author.lower() == author_lower]
+            if not to_remove:
+                return
+            self._data.levels = [e for e in self._data.levels if e.author.lower() != author_lower]
+            for e in reversed(to_remove):
+                self._data.level_history.insert(0, e)
+            self.save()
+
         self._notify()
+        for e in reversed(to_remove):
+            log_level_deleted(e.id, e.name, e.requester)
 
 
 def add_level_to_queue(

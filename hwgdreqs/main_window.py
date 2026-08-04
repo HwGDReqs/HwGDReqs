@@ -954,11 +954,17 @@ class MainWindow(QMainWindow):
         self._current_pixmap = None
 
     def _on_thumbnail_loaded(self, reply: QNetworkReply, level_id: str) -> None:
+        # H5 fix: this reply may complete after the user has already selected a
+        # different level. Only touch the cache/current pixmap/UI for THIS
+        # level_id if it's still cache-worthy; only update the visible thumbnail
+        # if the selection hasn't moved on to something else in the meantime.
+        selected_entry = self._selected_entry()
+        is_still_selected = selected_entry is not None and selected_entry.id == level_id
+
         if reply.error() == QNetworkReply.NetworkError.NoError:
             data = reply.readAll()
             pixmap = QPixmap()
             if pixmap.loadFromData(data):
-                self._current_pixmap = pixmap
                 cache_limit = max(0, int(self._queue.thumbnail_cache_size))
                 if cache_limit > 0:
                     self._thumbnail_cache[level_id] = pixmap
@@ -968,13 +974,16 @@ class MainWindow(QMainWindow):
                     while len(self._thumbnail_cache_order) > cache_limit:
                         old_id = self._thumbnail_cache_order.pop(0)
                         self._thumbnail_cache.pop(old_id, None)
-                self._thumbnail_label.show()
-                self._thumbnail_label.setMinimumSize(0, 0)
-                self._update_thumbnail()
-            else:
+
+                if is_still_selected:
+                    self._current_pixmap = pixmap
+                    self._thumbnail_label.show()
+                    self._thumbnail_label.setMinimumSize(0, 0)
+                    self._update_thumbnail()
+            elif is_still_selected:
                 self._current_pixmap = None
                 self._thumbnail_label.hide()
-        else:
+        elif is_still_selected:
             self._current_pixmap = None
             self._thumbnail_label.hide()
         reply.deleteLater()

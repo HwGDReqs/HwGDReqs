@@ -165,8 +165,10 @@ class TwitchChatWorker(QObject):
                     is_sub=is_sub,
                     is_vip=is_vip,
                 )
-        except Exception as e:
-            pass
+        except Exception:
+            # H4 fix: previously silently swallowed, hiding real bugs in chat
+            # processing with no trace in the logs. Log with traceback instead.
+            logger.exception(f"Error handling Twitch chat line: {line!r}")
 
     def _scan_for_levels(
         self,

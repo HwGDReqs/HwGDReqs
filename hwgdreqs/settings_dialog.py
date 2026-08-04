@@ -449,7 +449,14 @@ class ApiTab(QWidget):
         self._network_port_widget.setLayout(network_port_layout)
         self._network_port_widget.setEnabled(queue.api_host_to_network)
         layout.addWidget(self._network_port_widget)
-        
+
+        # Port conflict / privileged port warning (updates live as ports/host-toggle change)
+        self._port_warning_label = QLabel()
+        self._port_warning_label.setWordWrap(True)
+        self._port_warning_label.setStyleSheet("color: #d9822b;")  # amber warning color
+        self._port_warning_label.hide()
+        layout.addWidget(self._port_warning_label)
+
         layout.addStretch()
         
         self._update_urls()
@@ -468,15 +475,66 @@ class ApiTab(QWidget):
             self._network_url_label.show()
         else:
             self._network_url_label.hide()
-        
+
+        self._update_port_warning()
+
+    def _port_conflict_message(self) -> str | None:
+        """Return a warning message if the current port configuration looks
+        problematic, or None if it's fine. Checked live in the UI and again
+        (blocking) before apply()."""
+        local_port = self._local_port_spin.value()
+        network_port = self._network_port_spin.value()
+        host_enabled = self._host_network_check.isChecked()
+
+        warnings = []
+        if host_enabled and local_port == network_port:
+            warnings.append(
+                "Local API port and Network API port are both set to "
+                f"{local_port}. Only one server can bind that port at a time, "
+                "so one of the two API servers will fail to start."
+            )
+        privileged = [p for p in (local_port, (network_port if host_enabled else None)) if p and p < 1024]
+        if privileged:
+            ports_str = ", ".join(str(p) for p in sorted(set(privileged)))
+            warnings.append(
+                f"Port(s) {ports_str} are privileged (<1024). On most systems "
+                "binding to them without elevated/admin permissions will fail."
+            )
+        return " ".join(warnings) if warnings else None
+
+    def _update_port_warning(self):
+        message = self._port_conflict_message()
+        if message:
+            self._port_warning_label.setText(f"⚠️ {message}")
+            self._port_warning_label.show()
+        else:
+            self._port_warning_label.clear()
+            self._port_warning_label.hide()
+
     def _on_host_network_toggled(self, checked):
         self._network_port_widget.setEnabled(checked)
         self._update_urls()
-        
-    def apply(self):
+
+    def apply(self) -> bool:
+        """Apply the API settings. Returns False (and leaves settings
+        unapplied) if the user was warned about a port conflict/privileged
+        port and chose not to proceed, so the caller can keep the dialog open."""
+        message = self._port_conflict_message()
+        if message:
+            reply = QMessageBox.warning(
+                self,
+                "API Port Warning",
+                f"{message}\n\nApply these settings anyway?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if reply != QMessageBox.StandardButton.Yes:
+                return False
+
         self._queue.api_local_port = self._local_port_spin.value()
         self._queue.api_host_to_network = self._host_network_check.isChecked()
         self._queue.api_network_port = self._network_port_spin.value()
+        return True
 
 
 class InfoTab(QWidget):
@@ -1111,7 +1169,11 @@ class SettingsDialog(QDialog):
     def _on_close(self) -> None:
         self._general_tab.apply()
         self._filters_tab.apply_filters()
-        self._api_tab.apply()
+        # ApiTab.apply() returns False if the user was warned about a port
+        # conflict/privileged port and chose not to proceed; keep the dialog
+        # open in that case instead of discarding the warning silently.
+        if not self._api_tab.apply():
+            return
         self._queue.max_levels_per_requester = self._general_tab._max_levels_spinbox.value()
         self._queue.twitch_sub_priority = self._twitch_sub_priority_cb.isChecked()
         self._queue.twitch_vip_priority = self._twitch_vip_priority_cb.isChecked()

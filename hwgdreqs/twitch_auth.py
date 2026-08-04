@@ -380,7 +380,14 @@ def validate_session(
     interval: int = 5,
     *,
     on_pending: Callable[[], None] | None = None,
+    max_retries: int = 6,
+    max_backoff: float = 60.0,
 ) -> TwitchSession | None:
+    # M2 fix: this used to retry network errors (requests.RequestException)
+    # forever with no deadline, which could hang the caller's QEventLoop
+    # indefinitely if the network never recovers. Now it retries a bounded
+    # number of times with exponential backoff, then gives up cleanly.
+    attempt = 0
     while True:
         if on_pending:
             on_pending()
@@ -397,7 +404,11 @@ def validate_session(
                 continue
             return None
         except requests.RequestException:
-            time.sleep(interval)
+            attempt += 1
+            if attempt >= max_retries:
+                return None
+            backoff = min(max_backoff, interval * (2 ** (attempt - 1)))
+            time.sleep(backoff)
 
 
 def check_twitch_follower(session: TwitchSession, target_user_id: str) -> bool:

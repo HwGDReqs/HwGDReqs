@@ -24,6 +24,15 @@ COMMA_LEVEL_RE = re.compile(r"\b(\d{1,3}(?:,\d{3})+)\b")
 
 logger = get_logger()
 
+# M3 fix: pytchat.create() may internally call signal.signal(), which raises
+# outside the main thread on older pytchat versions that don't support
+# interruptable=False. The old fallback monkey-patched the global
+# `signal.signal` attribute with no synchronization, which is a process-wide
+# race if two YouTube (re)connect attempts hit the TypeError fallback at the
+# same time. Guard the patch/restore with a dedicated lock so only one thread
+# can have `signal.signal` patched out at a time.
+_signal_patch_lock = threading.Lock()
+
 
 def _extract_video_info(channel_url: str) -> dict:
 
@@ -305,12 +314,19 @@ class YoutubeChatWorker(QObject):
                 try:
                     self._chat = pytchat.create(video_id=self._video_id, interruptable=False)
                 except TypeError:
-                    original_signal = signal.signal
-                    try:
-                        signal.signal = lambda *args: None
-                        self._chat = pytchat.create(video_id=self._video_id)
-                    finally:
-                        signal.signal = original_signal
+                    # Older pytchat versions don't accept interruptable=False and
+                    # try to install a SIGINT handler, which only works on the
+                    # main thread. Patch signal.signal out for the duration of
+                    # the call, serialized via _signal_patch_lock so concurrent
+                    # (re)connect attempts on other threads can't race on the
+                    # global signal module state.
+                    with _signal_patch_lock:
+                        original_signal = signal.signal
+                        try:
+                            signal.signal = lambda *args: None
+                            self._chat = pytchat.create(video_id=self._video_id)
+                        finally:
+                            signal.signal = original_signal
                 
                 self.status_changed.emit(f"Connected to YouTube live chat ({self._username})")
 
