@@ -172,6 +172,19 @@ class GeneralTab(QWidget):
         )
         layout.addWidget(self._allow_any_level_cb)
 
+        self._auto_blacklist_cb = QCheckBox("auto blacklist level upon deletion")
+        self._auto_blacklist_cb.setChecked(queue.auto_blacklist_on_delete)
+        self._auto_blacklist_cb.setToolTip("Don't get the same level again")
+        self._auto_blacklist_cb.toggled.connect(self._on_auto_blacklist_toggled)
+        layout.addWidget(self._auto_blacklist_cb)
+
+        self._unless_updated_cb = QCheckBox("unless updated")
+        self._unless_updated_cb.setChecked(queue.auto_blacklist_unless_updated)
+        self._unless_updated_cb.setToolTip("Don't get the same level again UNLESS it has an update")
+        self._unless_updated_cb.setStyleSheet("margin-left: 20px;")
+        layout.addWidget(self._unless_updated_cb)
+        self._unless_updated_cb.setEnabled(queue.auto_blacklist_on_delete)
+
         self._print_full_log_cb = QCheckBox("print full log to console (devs only)")
         self._print_full_log_cb.setChecked(queue.print_full_log_to_console)
         self._print_full_log_cb.setToolTip("When enabled, logs everything to the console alongside the hwgdreqs.log file.")
@@ -203,10 +216,15 @@ class GeneralTab(QWidget):
 
         layout.addStretch()
 
+    def _on_auto_blacklist_toggled(self, checked):
+        self._unless_updated_cb.setEnabled(checked)
+
     def apply(self) -> None:
         self._queue.thumbnail_cache_size = self._thumb_cache_spinbox.value()
         self._queue.requester_cooldown = self._cooldown_spinbox.value()
         self._queue.allow_any_level = self._allow_any_level_cb.isChecked()
+        self._queue.auto_blacklist_on_delete = self._auto_blacklist_cb.isChecked()
+        self._queue.auto_blacklist_unless_updated = self._unless_updated_cb.isChecked()
         self._queue.print_full_log_to_console = self._print_full_log_cb.isChecked()
         self._queue.queue_popout_scale = self._popout_scale_slider.value() / 100.0
 

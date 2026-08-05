@@ -394,6 +394,7 @@ class TwitchChatWorker(QObject):
             platform="twitch",
             likes=int(data.get("likes", 0)),
             downloads=int(data.get("downloads", 0)),
+            version=int(data.get("version", 0)),
         )
         self.status_changed.emit(f"Replaced level {old_level_id} with {new_level_id} for {requester}")
 
@@ -418,6 +419,7 @@ class TwitchChatWorker(QObject):
                 platform="twitch",
                 likes=int(data.get("likes", 0)),
                 downloads=int(data.get("downloads", 0)),
+                version=int(data.get("version", 0)),
                 priority=priority,
             )
             if added:

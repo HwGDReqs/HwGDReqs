@@ -41,6 +41,7 @@ class LevelEntry:
     downloads: int = 0
     disliked: bool = False
     priority: bool = False
+    version: int = 0
 
 
 import random
@@ -81,6 +82,8 @@ class QueueData:
     print_full_log_to_console: bool = False
     queue_popout_scale: float = 1.0
     requests_enabled: bool = True
+    auto_blacklist_on_delete: bool = False
+    auto_blacklist_unless_updated: bool = False
 
 
 
@@ -105,6 +108,8 @@ class QueueManager(QObject):
         # marshal the call onto QueueManager's own thread (the main thread)
         # via the event loop instead of invoking it directly on whichever
         # worker thread called _notify()/emit().
+
+        # i regret looking at ts now ppl will think ts is vibecoded
         self.changed.connect(callback, Qt.ConnectionType.QueuedConnection)
 
     def _notify(self) -> None:
@@ -333,6 +338,30 @@ class QueueManager(QObject):
             self.save()
         # no notify.. not queue data, just UI pref
 
+    @property
+    def auto_blacklist_on_delete(self) -> bool:
+        with self._lock:
+            return self._data.auto_blacklist_on_delete
+
+    @auto_blacklist_on_delete.setter
+    def auto_blacklist_on_delete(self, value: bool) -> None:
+        with self._lock:
+            self._data.auto_blacklist_on_delete = bool(value)
+            self.save()
+        self._notify()
+
+    @property
+    def auto_blacklist_unless_updated(self) -> bool:
+        with self._lock:
+            return self._data.auto_blacklist_unless_updated
+
+    @auto_blacklist_unless_updated.setter
+    def auto_blacklist_unless_updated(self, value: bool) -> None:
+        with self._lock:
+            self._data.auto_blacklist_unless_updated = bool(value)
+            self.save()
+        self._notify()
+
 
     def is_on_cooldown(self, requester: str) -> bool:
         with self._lock:
@@ -407,6 +436,7 @@ class QueueManager(QObject):
                     downloads=entry.get("downloads", 0),
                     disliked=entry.get("disliked", False),
                     priority=entry.get("priority", False),
+                    version=int(entry.get("version", 0)),
                 )
                 for entry in raw.get("levels", [])
             ],
@@ -428,6 +458,7 @@ class QueueManager(QObject):
                     downloads=entry.get("downloads", 0),
                     disliked=entry.get("disliked", False),
                     priority=entry.get("priority", False),
+                    version=int(entry.get("version", 0)),
                 )
                 for entry in raw.get("level_history", [])
             ],
@@ -453,6 +484,8 @@ class QueueManager(QObject):
             print_full_log_to_console=bool(raw.get("print_full_log_to_console", False)),
             queue_popout_scale=float(raw.get("queue_popout_scale", 1.0)),
             requests_enabled=bool(raw.get("requests_enabled", True)),
+            auto_blacklist_on_delete=bool(raw.get("auto_blacklist_on_delete", False)),
+            auto_blacklist_unless_updated=bool(raw.get("auto_blacklist_unless_updated", False)),
         )
 
         # Populate missing timestamps
@@ -508,6 +541,8 @@ class QueueManager(QObject):
                 "print_full_log_to_console": self._data.print_full_log_to_console,
                 "queue_popout_scale": self._data.queue_popout_scale,
                 "requests_enabled": self._data.requests_enabled,
+                "auto_blacklist_on_delete": self._data.auto_blacklist_on_delete,
+                "auto_blacklist_unless_updated": self._data.auto_blacklist_unless_updated,
             }
 
             target_path = queue_file()
@@ -587,6 +622,7 @@ class QueueManager(QObject):
         likes: int = 0,
         downloads: int = 0,
         priority: bool = False,
+        version: int = 0,
     ) -> bool:
         level_id = str(level_id)
         author_lower = author.lower()
@@ -597,7 +633,20 @@ class QueueManager(QObject):
                 return False
 
             if level_id in self._data.blacklist_levels:
-                return False
+                if self._data.auto_blacklist_unless_updated:
+                    old_version = 0
+                    for hist_entry in self._data.level_history:
+                        if hist_entry.id == level_id:
+                            old_version = hist_entry.version
+                            break
+                    if old_version != 0 and version != old_version:
+                        self._data.blacklist_levels = [lid for lid in self._data.blacklist_levels if lid != level_id]
+                        self._data.blacklist_timestamps["levels"].pop(level_id, None)
+                        log_level_unblacklisted(level_id)
+                    else:
+                        return False
+                else:
+                    return False
             if author_lower in [a.lower() for a in self._data.blacklist_authors]:
                 return False
             if requester_lower in [r.lower() for r in self._data.blacklist_requesters]:
@@ -636,6 +685,7 @@ class QueueManager(QObject):
                 downloads=downloads,
                 disliked=disliked,
                 priority=priority,
+                version=version,
             )
 
             if priority:
@@ -671,6 +721,8 @@ class QueueManager(QObject):
         
         if level_to_remove:
             log_level_deleted(level_to_remove.id, level_to_remove.name, level_to_remove.requester)
+            if self.auto_blacklist_on_delete:
+                self.blacklist_level(level_id)
 
     def replace_level(
         self,
@@ -691,6 +743,7 @@ class QueueManager(QObject):
         timestamp: float | None = None,
         likes: int = 0,
         downloads: int = 0,
+        version: int = 0,
     ) -> None:
 
         with self._lock:
@@ -727,6 +780,7 @@ class QueueManager(QObject):
                 # H3 fix: preserve the priority flag from the level being replaced,
                 # instead of silently defaulting to False.
                 priority=old_level.priority if old_level else False,
+                version=version,
             )
 
             self._data.levels[old_index] = entry

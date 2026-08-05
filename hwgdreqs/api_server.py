@@ -119,6 +119,7 @@ def _make_handler(queue: QueueManager, session: TwitchSession | None = None, cha
                     disliked=bool(level_data.get("disliked", False)),
                     likes=int(level_data.get("likes", 0)),
                     downloads=int(level_data.get("downloads", 0)),
+                    version=int(level_data.get("version", 0)),
                 )
                 
                 if success:
@@ -169,6 +170,7 @@ def _make_handler(queue: QueueManager, session: TwitchSession | None = None, cha
                     disliked=bool(level_data.get("disliked", False)),
                     likes=int(level_data.get("likes", 0)),
                     downloads=int(level_data.get("downloads", 0)),
+                    version=int(level_data.get("version", 0)),
                 )
                 self._send_json({"ok": True})
                 return
