@@ -490,7 +490,10 @@ class MainWindow(QMainWindow):
             
             if norm_latest != norm_current:
                 if sys.platform == "win32":
-                    from hwgdreqs.settings_dialog import UpdateDownloadWorker, tempfile, QProgressDialog, Qt, QTimer, subprocess, QApplication
+                    import tempfile, subprocess
+                    from PySide6.QtCore import Qt, QTimer
+                    from PySide6.QtWidgets import QProgressDialog, QApplication
+                    from hwgdreqs.settings_dialog import UpdateDownloadWorker
                     reply = QMessageBox.question(
                         self,
                         "Update Available",

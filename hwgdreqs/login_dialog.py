@@ -218,12 +218,15 @@ class LoginDialog(QDialog):
         return self._youtube_session
 
     def _do_twitch_login(self) -> None:
-        twitch_dialog = TwitchLoginDialog(self)
+        twitch_dialog = TwitchLoginDialog(parent=None)
+        twitch_dialog.setWindowModality(Qt.WindowModality.ApplicationModal)
         if twitch_dialog.exec() == QDialog.DialogCode.Accepted:
             self._session = twitch_dialog.session
             self.twitch_btn.setText("Twitch Logged In")
             self.twitch_btn.setEnabled(False)
             self._check_done_state()
+        self.raise_()
+        self.activateWindow()
 
     def _check_done_state(self) -> None:
         has_twitch = self._session is not None
