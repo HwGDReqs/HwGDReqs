@@ -42,6 +42,9 @@ class LevelEntry:
     disliked: bool = False
     priority: bool = False
     version: int = 0
+    superchat: bool = False
+    superchat_amount: str = ""
+    member: bool = False
 
 
 import random
@@ -77,6 +80,11 @@ class QueueData:
     twitch_subs_only: bool = False
     twitch_vip_only: bool = False
     twitch_followers_only: bool = False
+
+    youtube_members_only: bool = False
+    youtube_superchats_only: bool = False
+    youtube_superchat_priority: bool = False
+    youtube_member_priority: bool = False
 
     allow_any_level: bool = False
     print_full_log_to_console: bool = False
@@ -285,6 +293,54 @@ class QueueManager(QObject):
         self._notify()
 
     @property
+    def youtube_members_only(self) -> bool:
+        with self._lock:
+            return self._data.youtube_members_only
+
+    @youtube_members_only.setter
+    def youtube_members_only(self, value: bool) -> None:
+        with self._lock:
+            self._data.youtube_members_only = value
+            self.save()
+        self._notify()
+
+    @property
+    def youtube_superchats_only(self) -> bool:
+        with self._lock:
+            return self._data.youtube_superchats_only
+
+    @youtube_superchats_only.setter
+    def youtube_superchats_only(self, value: bool) -> None:
+        with self._lock:
+            self._data.youtube_superchats_only = value
+            self.save()
+        self._notify()
+
+    @property
+    def youtube_superchat_priority(self) -> bool:
+        with self._lock:
+            return self._data.youtube_superchat_priority
+
+    @youtube_superchat_priority.setter
+    def youtube_superchat_priority(self, value: bool) -> None:
+        with self._lock:
+            self._data.youtube_superchat_priority = value
+            self.save()
+        self._notify()
+
+    @property
+    def youtube_member_priority(self) -> bool:
+        with self._lock:
+            return self._data.youtube_member_priority
+
+    @youtube_member_priority.setter
+    def youtube_member_priority(self, value: bool) -> None:
+        with self._lock:
+            self._data.youtube_member_priority = value
+            self.save()
+        self._notify() # 🤑🤑🤑
+
+    @property
     def allow_any_level(self) -> bool:
         with self._lock:
             return self._data.allow_any_level
@@ -437,6 +493,9 @@ class QueueManager(QObject):
                     disliked=entry.get("disliked", False),
                     priority=entry.get("priority", False),
                     version=int(entry.get("version", 0)),
+                    superchat=entry.get("superchat", False),
+                    superchat_amount=entry.get("superchat_amount", ""),
+                    member=entry.get("member", False),
                 )
                 for entry in raw.get("levels", [])
             ],
@@ -459,6 +518,9 @@ class QueueManager(QObject):
                     disliked=entry.get("disliked", False),
                     priority=entry.get("priority", False),
                     version=int(entry.get("version", 0)),
+                    superchat=entry.get("superchat", False),
+                    superchat_amount=entry.get("superchat_amount", ""),
+                    member=entry.get("member", False),
                 )
                 for entry in raw.get("level_history", [])
             ],
@@ -480,6 +542,10 @@ class QueueManager(QObject):
             twitch_subs_only=bool(raw.get("twitch_subs_only", False)),
             twitch_vip_only=bool(raw.get("twitch_vip_only", False)),
             twitch_followers_only=bool(raw.get("twitch_followers_only", False)),
+            youtube_members_only=bool(raw.get("youtube_members_only", False)),
+            youtube_superchats_only=bool(raw.get("youtube_superchats_only", False)),
+            youtube_superchat_priority=bool(raw.get("youtube_superchat_priority", False)),
+            youtube_member_priority=bool(raw.get("youtube_member_priority", False)),
             allow_any_level=bool(raw.get("allow_any_level", False)),
             print_full_log_to_console=bool(raw.get("print_full_log_to_console", False)),
             queue_popout_scale=float(raw.get("queue_popout_scale", 1.0)),
@@ -537,6 +603,10 @@ class QueueManager(QObject):
                 "twitch_subs_only": self._data.twitch_subs_only,
                 "twitch_vip_only": self._data.twitch_vip_only,
                 "twitch_followers_only": self._data.twitch_followers_only,
+                "youtube_members_only": self._data.youtube_members_only,
+                "youtube_superchats_only": self._data.youtube_superchats_only,
+                "youtube_superchat_priority": self._data.youtube_superchat_priority,
+                "youtube_member_priority": self._data.youtube_member_priority,
                 "allow_any_level": self._data.allow_any_level,
                 "print_full_log_to_console": self._data.print_full_log_to_console,
                 "queue_popout_scale": self._data.queue_popout_scale,
@@ -623,6 +693,9 @@ class QueueManager(QObject):
         downloads: int = 0,
         priority: bool = False,
         version: int = 0,
+        superchat: bool = False,
+        superchat_amount: str = "",
+        member: bool = False,
     ) -> bool:
         level_id = str(level_id)
         author_lower = author.lower()
@@ -686,6 +759,9 @@ class QueueManager(QObject):
                 disliked=disliked,
                 priority=priority,
                 version=version,
+                superchat=superchat,
+                superchat_amount=superchat_amount,
+                member=member,
             )
 
             if priority:
@@ -744,6 +820,9 @@ class QueueManager(QObject):
         likes: int = 0,
         downloads: int = 0,
         version: int = 0,
+        superchat: bool = False,
+        superchat_amount: str = "",
+        member: bool = False,
     ) -> None:
 
         with self._lock:
@@ -777,10 +856,11 @@ class QueueManager(QObject):
                 likes=likes,
                 downloads=downloads,
                 disliked=disliked,
-                # H3 fix: preserve the priority flag from the level being replaced,
-                # instead of silently defaulting to False.
                 priority=old_level.priority if old_level else False,
                 version=version,
+                superchat=superchat if superchat else (old_level.superchat if old_level else False),
+                superchat_amount=superchat_amount if superchat_amount else (old_level.superchat_amount if old_level else ""),
+                member=member if member else (old_level.member if old_level else False),
             )
 
             self._data.levels[old_index] = entry

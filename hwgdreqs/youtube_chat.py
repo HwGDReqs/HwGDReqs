@@ -182,7 +182,9 @@ class YoutubeChatWorker(QObject):
             f"Replaced level {old_level_id} with {new_level_id} for {requester}"
         )
 
-    def _enqueue_level(self, requester: str, level_id: str, message: str) -> bool:
+    def _enqueue_level(self, requester: str, level_id: str, message: str, *,
+                       priority: bool = False, superchat: bool = False,
+                       superchat_amount: str = "", member: bool = False) -> bool:
         try:
             data = fetch_level(level_id)
             difficulty = str(data.get("difficulty", "Unrated"))
@@ -205,6 +207,10 @@ class YoutubeChatWorker(QObject):
                 likes=int(data.get("likes", 0)),
                 downloads=int(data.get("downloads", 0)),
                 version=int(data.get("version", 0)),
+                priority=priority,
+                superchat=superchat,
+                superchat_amount=superchat_amount,
+                member=member,
             )
             if added:
                 logger.info(f"Queued: '{data.get('name')}' by '{data.get('author')}' from '{requester}'")
@@ -229,6 +235,10 @@ class YoutubeChatWorker(QObject):
                 platform="youtube",
                 likes=0,
                 downloads=0,
+                priority=priority,
+                superchat=superchat,
+                superchat_amount=superchat_amount,
+                member=member,
             )
             if added:
                 logger.info(f"Failed to fetch level (timeout - gdbrowser took too long), so added bare ID")
@@ -254,6 +264,10 @@ class YoutubeChatWorker(QObject):
                 platform="youtube",
                 likes=0,
                 downloads=0,
+                priority=priority,
+                superchat=superchat,
+                superchat_amount=superchat_amount,
+                member=member,
             )
             if added:
                 logger.info(f"Level ID {level_id} not found on Geometry Dash servers, so added bare ID")
@@ -278,6 +292,10 @@ class YoutubeChatWorker(QObject):
                 platform="youtube",
                 likes=0,
                 downloads=0,
+                priority=priority,
+                superchat=superchat,
+                superchat_amount=superchat_amount,
+                member=member,
             )
             if added:
                 logger.info(f"Failed to fetch level {level_id} ({str(e)}), so added bare ID")
@@ -345,7 +363,32 @@ class YoutubeChatWorker(QObject):
                             
                             self.message_received.emit(author, message)
 
+                            is_superchat = getattr(c, "type", "") == "superChat"
+                            superchat_amount = ""
+                            if is_superchat:
+                                currency = getattr(c, "currency", "")
+                                amount = getattr(c, "amount", "")
+                                if currency and amount:
+                                    superchat_amount = f"{currency} {amount}"
+                                elif amount:
+                                    superchat_amount = str(amount)
+
+                            is_member = False
+                            try:
+                                badges = c.author.badges or []
+                                for badge in badges:
+                                    if getattr(badge, "type", "") == "member":
+                                        is_member = True
+                                        break
+                            except Exception: # 🤑🤑🤑
+                                pass
+
                             if self._handle_commands(author, message):
+                                continue
+
+                            if self._queue.youtube_members_only and not is_member and not is_superchat:
+                                continue
+                            if self._queue.youtube_superchats_only and not is_superchat:
                                 continue
 
                             matches = []
@@ -364,11 +407,22 @@ class YoutubeChatWorker(QObject):
                             if level_ids:
                                 if self._queue.is_on_cooldown(author):
                                     continue
+
+                                priority = False
+                                if is_superchat and self._queue.youtube_superchat_priority:
+                                    priority = True
+                                elif is_member and self._queue.youtube_member_priority:
+                                    priority = True
+
                                 added_any = False
                                 for level_id in level_ids:
                                     logger.info(f"Level detected: {level_id} from {author}")
                                     self.level_detected.emit(author, level_id)
-                                    if self._enqueue_level(author, level_id, message):
+                                    if self._enqueue_level(author, level_id, message,
+                                                          priority=priority,
+                                                          superchat=is_superchat,
+                                                          superchat_amount=superchat_amount,
+                                                          member=is_member):
                                         added_any = True
                                 if added_any:
                                     self._queue.update_cooldown(author)

@@ -1149,7 +1149,30 @@ class SettingsDialog(QDialog):
             connect_btn = QPushButton("Connect YouTube")
             connect_btn.clicked.connect(self._connect_youtube)
             youtube_layout.addWidget(connect_btn)
-        
+
+        youtube_layout.addSpacing(15)
+        yt_priority_group_label = QLabel("YouTube Priorities & Restrictions:")
+        yt_priority_group_font = yt_priority_group_label.font()
+        yt_priority_group_font.setBold(True)
+        yt_priority_group_label.setFont(yt_priority_group_font)
+        youtube_layout.addWidget(yt_priority_group_label)
+
+        self._youtube_member_priority_cb = QCheckBox("Member Priority")
+        self._youtube_member_priority_cb.setChecked(queue.youtube_member_priority)
+        youtube_layout.addWidget(self._youtube_member_priority_cb)
+
+        self._youtube_superchat_priority_cb = QCheckBox("Superchat Priority")
+        self._youtube_superchat_priority_cb.setChecked(queue.youtube_superchat_priority)
+        youtube_layout.addWidget(self._youtube_superchat_priority_cb)
+
+        self._youtube_members_only_cb = QCheckBox("Members Only (ONLY accept the level if its a member)")
+        self._youtube_members_only_cb.setChecked(queue.youtube_members_only)
+        youtube_layout.addWidget(self._youtube_members_only_cb)
+
+        self._youtube_superchats_only_cb = QCheckBox("Superchats Only (ONLY accept the level if its a superchat)")
+        self._youtube_superchats_only_cb.setChecked(queue.youtube_superchats_only)
+        youtube_layout.addWidget(self._youtube_superchats_only_cb) # 🤑🤑🤑
+
         youtube_layout.addStretch()
         tabs.addTab(youtube_tab, "YouTube")
 
@@ -1199,6 +1222,10 @@ class SettingsDialog(QDialog):
         self._queue.twitch_subs_only = self._twitch_subs_only_cb.isChecked()
         self._queue.twitch_vip_only = self._twitch_vip_only_cb.isChecked()
         self._queue.twitch_followers_only = self._twitch_followers_only_cb.isChecked()
+        self._queue.youtube_member_priority = self._youtube_member_priority_cb.isChecked()
+        self._queue.youtube_superchat_priority = self._youtube_superchat_priority_cb.isChecked()
+        self._queue.youtube_members_only = self._youtube_members_only_cb.isChecked()
+        self._queue.youtube_superchats_only = self._youtube_superchats_only_cb.isChecked()
         self.accept()
 
     def refresh(self) -> None:
