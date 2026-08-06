@@ -203,9 +203,19 @@ class LoginDialog(QDialog):
         self.done_btn.clicked.connect(self._on_done)
         btn_layout.addWidget(self.done_btn)
 
+        gd_btn_row = QHBoxLayout()
+        gd_btn_row.setSpacing(4)
         self.install_gd_btn = QPushButton("install GD integration (GD)")
         self.install_gd_btn.clicked.connect(self._install_gd)
-        btn_layout.addWidget(self.install_gd_btn)
+        gd_btn_row.addWidget(self.install_gd_btn)
+
+        self.gd_info_btn = QPushButton("ℹ️")
+        self.gd_info_btn.setFixedWidth(32)
+        self.gd_info_btn.setToolTip("Why this won't appear in Geode index")
+        self.gd_info_btn.clicked.connect(self._show_gd_info)
+        gd_btn_row.addWidget(self.gd_info_btn)
+
+        btn_layout.addLayout(gd_btn_row)
 
         layout.addLayout(btn_layout)
 
@@ -244,4 +254,12 @@ class LoginDialog(QDialog):
     def _install_gd(self) -> None:
         from hwgdreqs.geode_installer import install_geode_integration
         install_geode_integration(self)
+
+    def _show_gd_info(self) -> None:
+        from hwgdreqs.geode_installer import GEODE_EXPLANATION_TEXT
+        QMessageBox.information(
+            self,
+            "About Geode Integration",
+            GEODE_EXPLANATION_TEXT,
+        )
 

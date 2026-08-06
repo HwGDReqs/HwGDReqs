@@ -982,6 +982,61 @@ class UpdaterTab(QWidget):
         sys.exit(0)
 
 
+class GeodeIntegrationTab(QWidget):
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+
+        layout = QVBoxLayout(self)
+        layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.setSpacing(15)
+
+        title_label = QLabel("Geode Integration")
+        title_font = title_label.font()
+        title_font.setBold(True)
+        title_font.setPointSize(16)
+        title_label.setFont(title_font)
+        title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(title_label)
+
+        subtitle = QLabel(
+            "Install or reinstall the HwGDReqs Geode mod for Geometry Dash."
+        )
+        subtitle.setWordWrap(True)
+        subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        subtitle.setStyleSheet("color: gray;")
+        layout.addWidget(subtitle)
+
+        layout.addSpacing(10)
+
+        self._install_btn = QPushButton("Download + install")
+        self._install_btn.setFixedWidth(260)
+        self._install_btn.clicked.connect(self._on_install)
+        layout.addWidget(self._install_btn, alignment=Qt.AlignmentFlag.AlignCenter)
+
+        self._reinstall_btn = QPushButton("redownload + reinstall (run frequently)")
+        self._reinstall_btn.setFixedWidth(260)
+        self._reinstall_btn.clicked.connect(self._on_install)
+        layout.addWidget(self._reinstall_btn, alignment=Qt.AlignmentFlag.AlignCenter)
+
+        layout.addSpacing(15)
+
+        from hwgdreqs.geode_installer import GEODE_EXPLANATION_TEXT
+
+        explanation_label = QLabel(GEODE_EXPLANATION_TEXT)
+        explanation_label.setWordWrap(True)
+        explanation_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        explanation_label.setStyleSheet(
+            "padding: 12px; background-color: #2b2b2b; border-radius: 6px; color: #d0d0d0;"
+        )
+        layout.addWidget(explanation_label)
+
+        layout.addStretch()
+
+    def _on_install(self) -> None:
+        from hwgdreqs.geode_installer import install_geode_integration
+        install_geode_integration(self)
+
+
 class SettingsDialog(QDialog):
     logged_out = Signal()
     youtube_updated = Signal()
@@ -1187,6 +1242,9 @@ class SettingsDialog(QDialog):
 
         self._info_tab = InfoTab()
         tabs.addTab(self._info_tab, "Info")
+
+        self._geode_tab = GeodeIntegrationTab()
+        tabs.addTab(self._geode_tab, "Geode Integration")
 
         self._updater_tab = UpdaterTab(self)
         tabs.addTab(self._updater_tab, "Updater")
