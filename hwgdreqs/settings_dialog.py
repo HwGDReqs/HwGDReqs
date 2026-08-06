@@ -1008,12 +1008,8 @@ class GeodeIntegrationTab(QWidget):
 
         layout.addSpacing(10)
 
-        self._install_btn = QPushButton("Download + install")
-        self._install_btn.setFixedWidth(260)
-        self._install_btn.clicked.connect(self._on_install)
-        layout.addWidget(self._install_btn, alignment=Qt.AlignmentFlag.AlignCenter)
 
-        self._reinstall_btn = QPushButton("redownload + reinstall (run frequently)")
+        self._reinstall_btn = QPushButton("(re)download + (re)install (run frequently)")
         self._reinstall_btn.setFixedWidth(260)
         self._reinstall_btn.clicked.connect(self._on_install)
         layout.addWidget(self._reinstall_btn, alignment=Qt.AlignmentFlag.AlignCenter)
