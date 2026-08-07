@@ -3,7 +3,8 @@ import time
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QIcon, QPixmap
-from PySide6.QtWidgets import QApplication, QSplashScreen
+from PySide6.QtWidgets import QApplication, QSplashScreen, QWidget
+
 
 from hwgdreqs.config import APP_NAME, APP_VERSION, asset_path, exec_dir
 from hwgdreqs.main_window import MainWindow
@@ -27,10 +28,14 @@ def main() -> int:
     if icon_path.exists():
         app.setWindowIcon(QIcon(str(icon_path)))
 
+    class NonHidingSplashScreen(QSplashScreen):
+        def mousePressEvent(self, event):
+            pass
+
     splash_path = asset_path("splash.png")
     splash = None
     if splash_path.exists():
-        splash = QSplashScreen(QPixmap(str(splash_path)))
+        splash = NonHidingSplashScreen(QPixmap(str(splash_path)))
         splash.show()
         app.processEvents()
 

@@ -1046,7 +1046,31 @@ class SettingsDialog(QDialog):
         self.setMinimumSize(1000, 550)
         
         layout = QVBoxLayout(self)
-        tabs = QTabWidget()
+        from PySide6.QtWidgets import QGridLayout, QStackedWidget
+        
+        self.tabs_grid = QGridLayout()
+        self.tabs_grid.setSpacing(5)
+        self.tabs_stacked = QStackedWidget()
+        self.tab_buttons = []
+
+        def add_tab(widget, title):
+            idx = self.tabs_stacked.count()
+            self.tabs_stacked.addWidget(widget)
+            btn = QPushButton(title)
+            btn.setCheckable(True)
+            if idx == 0:
+                btn.setChecked(True)
+            btn.clicked.connect(lambda checked, i=idx: self._select_tab(i))
+            self.tab_buttons.append(btn)
+            row = idx // 7
+            col = idx % 7
+            self.tabs_grid.addWidget(btn, row, col)
+            
+        class _FakeTabs:
+            def addTab(self, widget, title):
+                add_tab(widget, title)
+                
+        tabs = _FakeTabs()
 
         self._general_tab = GeneralTab(queue)
         tabs.addTab(self._general_tab, "General")
@@ -1245,7 +1269,8 @@ class SettingsDialog(QDialog):
         self._updater_tab = UpdaterTab(self)
         tabs.addTab(self._updater_tab, "Updater")
 
-        layout.addWidget(tabs)
+        layout.addLayout(self.tabs_grid)
+        layout.addWidget(self.tabs_stacked)
 
         self._level_history_label = QLabel()
         self._level_history_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -1281,6 +1306,11 @@ class SettingsDialog(QDialog):
         self._queue.youtube_members_only = self._youtube_members_only_cb.isChecked()
         self._queue.youtube_superchats_only = self._youtube_superchats_only_cb.isChecked()
         self.accept()
+
+    def _select_tab(self, index: int) -> None:
+        self.tabs_stacked.setCurrentIndex(index)
+        for i, btn in enumerate(self.tab_buttons):
+            btn.setChecked(i == index)
 
     def refresh(self) -> None:
         self._levels_tab.refresh()

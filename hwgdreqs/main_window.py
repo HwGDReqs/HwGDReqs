@@ -532,25 +532,35 @@ class MainWindow(QMainWindow):
         tmp_dir = tempfile.gettempdir()
         dest_file = os.path.join(tmp_dir, "hwgdreqs-windows-portable.zip")
         
-        progress_dialog = QProgressDialog("Downloading update...", "Cancel", 0, 100, self)
-        progress_dialog.setWindowModality(Qt.WindowModality.WindowModal)
-        progress_dialog.setMinimumDuration(0)
-        progress_dialog.setValue(0)
+        self._startup_progress_dialog = QProgressDialog("Downloading update...", "Cancel", 0, 100, self)
+        self._startup_progress_dialog.setWindowModality(Qt.WindowModality.WindowModal)
+        self._startup_progress_dialog.setMinimumDuration(0)
+        self._startup_progress_dialog.setValue(0)
         
-        download_worker = UpdateDownloadWorker(download_url, dest_file, self)
+        self._startup_download_worker = UpdateDownloadWorker(download_url, dest_file, self)
         
         def cancel_download():
-            download_worker.cancel()
-            download_worker.wait()
+            self._startup_download_worker.cancel()
+            self._startup_download_worker.wait()
         
-        progress_dialog.canceled.connect(cancel_download)
-        download_worker.progress.connect(progress_dialog.setValue)
+        self._startup_progress_dialog.canceled.connect(cancel_download)
+        self._startup_download_worker.progress.connect(self._startup_progress_dialog.setValue)
         
         def on_download_finished():
-            progress_dialog.close()
+            if self._startup_download_worker._is_cancelled:
+                return
+            self._startup_progress_dialog.close()
             
-            QMessageBox.information(self, "Download Complete!", "Download complete. Launching updater in 2 seconds...")
+            reply = QMessageBox.question(
+                self, 
+                "Download Complete!", 
+                "Download complete. Launch updater now?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            )
             
+            if reply != QMessageBox.StandardButton.Yes:
+                return
+
             def run_updater():
                 updater_path = exec_dir() / "updater" / "updater.bat"
                 try:
@@ -562,19 +572,19 @@ class MainWindow(QMainWindow):
                 import sys
                 sys.exit(0)
                 
-            QTimer.singleShot(2000, run_updater)
+            QTimer.singleShot(500, run_updater)
             
         def on_download_error(error_msg):
-            progress_dialog.close()
+            self._startup_progress_dialog.close()
             QMessageBox.warning(
                 self,
                 "Download Failed",
                 f"An error occurred while downloading the update:\n{error_msg}"
             )
         
-        download_worker.finished.connect(on_download_finished)
-        download_worker.error.connect(on_download_error)
-        download_worker.start()
+        self._startup_download_worker.finished.connect(on_download_finished)
+        self._startup_download_worker.error.connect(on_download_error)
+        self._startup_download_worker.start()
         
     def _check_internet(self) -> bool:
         import socket
