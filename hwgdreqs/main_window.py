@@ -67,6 +67,7 @@ class QueueListItemWidget(QWidget):
 from hwgdreqs.login_dialog import LoginDialog
 from hwgdreqs.api_server import ApiServer
 from hwgdreqs.queue_manager import LevelEntry, QueueManager
+from hwgdreqs.toast_notification import ToastNotification
 from hwgdreqs.session_worker import SessionValidationWorker
 from hwgdreqs.settings_dialog import SettingsDialog
 from hwgdreqs.twitch_auth import TwitchSession, get_queue_command_enabled, load_session
@@ -268,6 +269,9 @@ class MainWindow(QMainWindow):
         
         self._aredl_cache: dict[str, int] | None = None
         self._aredl_fetching = False
+        self._active_toast = None
+
+        self._queue.first_level_added.connect(self._show_toast)
         
         # Load platform icons
         self._twitch_icon = QIcon(str(asset_path("twitch.svg")))
@@ -471,6 +475,25 @@ class MainWindow(QMainWindow):
         self._configure_api_server()
         self._api_server.start()
 
+    def _show_toast(self, entry) -> None:
+        self._active_toast = ToastNotification(
+            "New level to queue!",
+            f"{entry.name} From {entry.requester}"
+        )
+        self._active_toast.show_toast()
+
+    def _get_level_thumbnail(self, level_id: str) -> None:
+        if level_id in self._thumbnail_cache:
+            self._display_thumbnail(self._thumbnail_cache[level_id])
+            return
+
+        self._thumbnail_label.setText("Loading thumbnail...")
+        self._thumbnail_label.show()
+        
+        req = QNetworkRequest(QUrl(f"https://raw.githubusercontent.com/cdc-sys/level-thumbnails/main/thumbs/{level_id}.png"))
+        reply = self._network_manager.get(req)
+        reply.finished.connect(lambda r=reply, lid=level_id: self._on_thumbnail_downloaded(r, lid))
+
     def _configure_api_server(self):
         self._api_server.set_config(
             self._queue.api_local_port,
@@ -479,112 +502,8 @@ class MainWindow(QMainWindow):
         )
         
     def _check_for_updates_on_startup(self):
-        from hwgdreqs.settings_dialog import UpdateCheckerWorker, APP_VERSION
-        import sys
-        
-        self._check_update_worker = UpdateCheckerWorker(self)
-        
-        def on_finished(latest_version):
-            norm_latest = latest_version.strip().lower().lstrip('v')
-            norm_current = APP_VERSION.strip().lower().lstrip('v')
-            
-            if norm_latest != norm_current:
-                if sys.platform == "win32":
-                    import tempfile, subprocess
-                    from PySide6.QtCore import Qt, QTimer
-                    from PySide6.QtWidgets import QProgressDialog, QApplication
-                    from hwgdreqs.settings_dialog import UpdateDownloadWorker
-                    reply = QMessageBox.question(
-                        self,
-                        "Update Available",
-                        f"There is an update ({latest_version}), want to download and install?",
-                        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-                    )
-                    if reply == QMessageBox.StandardButton.Yes:
-                        download_url = "https://github.com/HwGDReqs/HwGDReqs/releases/latest/download/hwgdreqs-windows-portable.zip"
-                        self._download_update_for_startup(download_url)
-                elif sys.platform.startswith("linux"):
-                    reply = QMessageBox.question(
-                        self,
-                        "Update Available",
-                        f"There is an update ({latest_version}). To update, please run:\n\ncurl https://hwgdreqs.github.io/install.sh | bash\n\nWould you like to copy this command to clipboard?",
-                        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-                    )
-                    if reply == QMessageBox.StandardButton.Yes:
-                        QGuiApplication.clipboard().setText("curl https://hwgdreqs.github.io/install.sh | bash")
-                        QMessageBox.information(self, "Copied!", "Command copied to clipboard!")
-                else:
-                    QMessageBox.information(
-                        self,
-                        "Update Available",
-                        f"There is an update ({latest_version}). Please update manually.\nIf you installed via pip, run:\n\npip install --upgrade hwgdreqs, or run this\nif you used the install script:\n\ncurl https://hwgdreqs.github.io/install.sh | sh\n\n"
-                    )
-        
-        self._check_update_worker.finished.connect(on_finished)
-        self._check_update_worker.start()
-        
-    def _download_update_for_startup(self, download_url):
-        import tempfile
-        import os
-        from hwgdreqs.settings_dialog import UpdateDownloadWorker
-        import subprocess
-        
-        tmp_dir = tempfile.gettempdir()
-        dest_file = os.path.join(tmp_dir, "hwgdreqs-windows-portable.zip")
-        
-        self._startup_progress_dialog = QProgressDialog("Downloading update...", "Cancel", 0, 100, self)
-        self._startup_progress_dialog.setWindowModality(Qt.WindowModality.WindowModal)
-        self._startup_progress_dialog.setMinimumDuration(0)
-        self._startup_progress_dialog.setValue(0)
-        
-        self._startup_download_worker = UpdateDownloadWorker(download_url, dest_file, self)
-        
-        def cancel_download():
-            self._startup_download_worker.cancel()
-            self._startup_download_worker.wait()
-        
-        self._startup_progress_dialog.canceled.connect(cancel_download)
-        self._startup_download_worker.progress.connect(self._startup_progress_dialog.setValue)
-        
-        def on_download_finished():
-            if self._startup_download_worker._is_cancelled:
-                return
-            self._startup_progress_dialog.close()
-            
-            reply = QMessageBox.question(
-                self, 
-                "Download Complete!", 
-                "Download complete. Launch updater now?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-            )
-            
-            if reply != QMessageBox.StandardButton.Yes:
-                return
-
-            def run_updater():
-                updater_path = exec_dir() / "updater" / "updater.bat"
-                try:
-                    subprocess.Popen([str(updater_path)], cwd=str(exec_dir()))
-                except Exception:
-                    pass
-                
-                QApplication.quit()
-                import sys
-                sys.exit(0)
-                
-            QTimer.singleShot(500, run_updater)
-            
-        def on_download_error(error_msg):
-            self._startup_progress_dialog.close()
-            QMessageBox.warning(
-                self,
-                "Download Failed",
-                f"An error occurred while downloading the update:\n{error_msg}"
-            )
-        
-        self._startup_download_worker.finished.connect(on_download_finished)
-        self._startup_download_worker.error.connect(on_download_error)
-        self._startup_download_worker.start()
+        from hwgdreqs.updater import check_for_updates_on_startup
+        check_for_updates_on_startup(self)
         
     def _check_internet(self) -> bool:
         import socket

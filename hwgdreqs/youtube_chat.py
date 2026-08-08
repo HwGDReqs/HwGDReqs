@@ -324,8 +324,8 @@ class YoutubeChatWorker(QObject):
                 if not info.get("is_live"):
                     logger.info(f"YouTube channel {self._username} is not currently live")
                     self.not_streaming.emit()
-                    # Wait 6 seconds and try again
-                    self._stop_event.wait(6)
+                    # Wait 15 seconds and try again
+                    self._stop_event.wait(15)
                     continue
 
                 url = info["webpage_url"]
@@ -441,8 +441,8 @@ class YoutubeChatWorker(QObject):
                     if "not currently live" in err_msg:
                         logger.info(f"YouTube channel {self._username} is not currently live (caught: {err_msg})")
                         self.not_streaming.emit()
+                        self._stop_event.wait(15)
                     else:
                         logger.warning(f"Failed to connect to YouTube: {err_msg}")
                         self.connection_failed.emit(f"Failed to connect to YouTube: {err_msg}")
-                    
-                    self._stop_event.wait(60)
+                        self._stop_event.wait(60)

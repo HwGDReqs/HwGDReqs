@@ -6,6 +6,7 @@ import requests
 from PySide6.QtCore import Signal, Qt, QThread
 from PySide6.QtWidgets import (
     QDialog,
+    QFileDialog,
     QHBoxLayout,
     QLabel,
     QMessageBox,
@@ -180,6 +181,52 @@ def _install_geode_data(parent, geode_data: bytes) -> None:
             found_path = p
             break
 
+    if not found_path:
+        QMessageBox.information(
+            parent,
+            "Geode Installer",
+            "Didnt find gd... I will open a file picker you select the folder you have the game installed in",
+        )
+        file_path, _ = QFileDialog.getOpenFileName(
+            parent,
+            "Select GeometryDash.exe (or Geometry Dash.app)",
+            "",
+            "Executable (*.exe);;App (*.app);;All Files (*)",
+        )
+        if not file_path:
+            return
+
+        gd_path = Path(file_path)
+        gd_dir = gd_path.parent
+
+        has_geode = False
+        if system in ("Windows", "Linux"):
+            if (gd_dir / "Geode.dll").exists():
+                has_geode = True
+        elif system == "Darwin":
+            if gd_path.exists():
+                has_geode = True
+
+        if not has_geode:
+            from PySide6.QtGui import QDesktopServices
+            from PySide6.QtCore import QUrl
+            msg = QMessageBox(parent)
+            msg.setWindowTitle("Missing Geode")
+            msg.setText("You seem to NOT have Geode the mod loader since it's needed, please install it then go to this app's settings>geode integration")
+            btn_take_me = msg.addButton("Take me there", QMessageBox.ButtonRole.ActionRole)
+            msg.addButton(QMessageBox.StandardButton.Cancel)
+            msg.exec()
+            if msg.clickedButton() == btn_take_me:
+                QDesktopServices.openUrl(QUrl("https://geode-sdk.org"))
+            return
+
+        if system == "Darwin" and gd_path.name.endswith(".app"):
+            found_path = gd_path / "Contents" / "geode" / "mods"
+        else:
+            found_path = gd_dir / "geode" / "mods"
+        
+        found_path.mkdir(parents=True, exist_ok=True)
+
     filename = "hwgdreqs.hwgdreqs-integration.geode"
 
     if found_path:
@@ -195,24 +242,6 @@ def _install_geode_data(parent, geode_data: bytes) -> None:
             QMessageBox.warning(
                 parent, "Error", f"Found mods dir but failed to write: {e}"
             )
-    else:
-        downloads_dir = home / "Downloads"
-        if not downloads_dir.exists():
-            downloads_dir.mkdir(parents=True, exist_ok=True)
-
-        target_file = downloads_dir / filename
-        try:
-            target_file.write_bytes(geode_data)
-            QMessageBox.information(
-                parent,
-                "Installed to Downloads",
-                "Alright i didn't knew where the f*ck did you install Geometry Dash BUT i left the .geode to your Downloads folder, copy it from there",
-            )
-        except Exception as e:
-            QMessageBox.warning(
-                parent, "Error", f"Failed to write to Downloads folder: {e}"
-            )
-
 
 def install_geode_integration(parent=None) -> None:
     dialog = GeodeDownloadDialog(parent)

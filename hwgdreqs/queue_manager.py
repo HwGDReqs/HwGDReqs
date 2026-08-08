@@ -31,6 +31,7 @@ class LevelEntry:
     difficulty: str
     requester: str
     platform: str = "twitch"
+    platform_icon: str = ""
     message: str = ""
     description: str = ""
     length: str = ""
@@ -97,6 +98,7 @@ class QueueData:
 
 class QueueManager(QObject):
     changed = Signal()
+    first_level_added = Signal(object)
 
     def __init__(self) -> None:
         super().__init__()
@@ -482,6 +484,7 @@ class QueueManager(QObject):
                     difficulty=entry.get("difficulty", ""),
                     requester=entry.get("requester", ""),
                     platform=entry.get("platform", "twitch"),
+                    platform_icon=entry.get("platform_icon", ""),
                     message=entry.get("message", ""),
                     description=entry.get("description", ""),
                     length=entry.get("length", ""),
@@ -507,6 +510,7 @@ class QueueManager(QObject):
                     difficulty=entry.get("difficulty", ""),
                     requester=entry.get("requester", ""),
                     platform=entry.get("platform", "twitch"),
+                    platform_icon=entry.get("platform_icon", ""),
                     message=entry.get("message", ""),
                     description=entry.get("description", ""),
                     length=entry.get("length", ""),
@@ -682,6 +686,7 @@ class QueueManager(QObject):
         difficulty: str,
         requester: str,
         platform: str = "twitch",
+        platform_icon: str = "",
         message: str = "",
         description: str = "",
         length: str = "",
@@ -741,6 +746,8 @@ class QueueManager(QObject):
             if timestamp is None:
                 timestamp = time.time()
 
+            was_empty = len(self._data.levels) == 0
+
             entry = LevelEntry(
                 id=level_id,
                 name=name,
@@ -748,6 +755,7 @@ class QueueManager(QObject):
                 difficulty=difficulty,
                 requester=requester,
                 platform=platform,
+                platform_icon=platform_icon,
                 message=message,
                 description=description,
                 length=length,
@@ -777,6 +785,8 @@ class QueueManager(QObject):
             self.save()
 
         self._notify()
+        if was_empty:
+            self.first_level_added.emit(entry)
         log_level_added(level_id, name, requester, platform)
         return True
 
@@ -847,6 +857,7 @@ class QueueManager(QObject):
                 difficulty=difficulty,
                 requester=requester,
                 platform=platform,
+                platform_icon=platform_icon if platform_icon else (old_level.platform_icon if old_level else ""),
                 message=message,
                 description=description,
                 length=length,

@@ -1,0 +1,362 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "HwGDReqs API",
+    "version": "1.0.0",
+    "description": "API for interacting with the Geometry Dash Request Queue"
+  },
+  "paths": {
+    "/queue": {
+      "get": {
+        "summary": "Get the current queue",
+        "parameters": [
+          {
+            "name": "row",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Get a specific row from the queue"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Clear the queue",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/queue/count": {
+      "get": {
+        "summary": "Get the number of levels in the queue",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/current": {
+      "get": {
+        "summary": "Get the current level",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/add": {
+      "get": {
+        "summary": "Add a level to the queue",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "requester",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "platform",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "message",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "prio",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            },
+            "description": "Set to true to prioritize this level"
+          },
+          {
+            "name": "platform-icon",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "URL or path to a platform icon"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/replace": {
+      "get": {
+        "summary": "Replace a level in the queue",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Old level ID"
+          },
+          {
+            "name": "new_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "New level ID"
+          },
+          {
+            "name": "requester",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "platform",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "message",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "platform-icon",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "URL or path to a platform icon"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/delete": {
+      "get": {
+        "summary": "Delete a level from the queue",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/blacklist": {
+      "get": {
+        "summary": "Get blacklisted levels, authors, and requesters",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/blacklistlevel": {
+      "get": {
+        "summary": "Blacklist a level",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/banauthor": {
+      "get": {
+        "summary": "Ban an author",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/banrequester": {
+      "get": {
+        "summary": "Ban a requester",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/bantwitch": {
+      "get": {
+        "summary": "Ban a requester on Twitch",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/clear": {
+      "get": {
+        "summary": "Clear the queue",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/requests-on": {
+      "get": {
+        "summary": "Enable requests",
+        "parameters": [
+          {
+            "name": "send-twitch",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/requests-off": {
+      "get": {
+        "summary": "Disable requests",
+        "parameters": [
+          {
+            "name": "send-twitch",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/requests-state": {
+      "get": {
+        "summary": "Get requests enabled state",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/search": {
+      "get": {
+        "summary": "Search the queue",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    }
+  }
+}
