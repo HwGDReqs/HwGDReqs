@@ -1,4 +1,4 @@
-### HwGDReqs
+### [HwGDReqs](https://hwgdreqs.github.io/)
 
 a GD level requests app for streamers
 
