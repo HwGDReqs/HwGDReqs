@@ -496,6 +496,12 @@ class ApiTab(QWidget):
         self._expose_btn.clicked.connect(self._toggle_expose)
         cloudflared_layout.addWidget(self._expose_btn)
 
+        if sys.platform == "darwin":
+            self._expose_btn.setEnabled(False)
+            macos_label = QLabel("Yes won't add this to macOS because of i don't know how permissions work there so...")
+            macos_label.setWordWrap(True)
+            cloudflared_layout.addWidget(macos_label)
+
         self._cloudflared_link_label = QLabel()
         self._cloudflared_link_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         cloudflared_layout.addWidget(self._cloudflared_link_label)
@@ -609,21 +615,6 @@ class ApiTab(QWidget):
             msg.exec()
             if msg.clickedButton() == dl_btn:
                 QDesktopServices.openUrl(QUrl("https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.msi"))
-                
-        elif sys.platform == "darwin":
-            msg.setText("This feature needs a dependency Cloudflare Tunnel which is not installed, please insatll it to continue using this from brew or get the binary release")
-            copy_brew_btn = msg.addButton("copy Brew command", QMessageBox.ButtonRole.ActionRole)
-            dl_btn = msg.addButton("Download Binary", QMessageBox.ButtonRole.ActionRole)
-            cancel_btn = msg.addButton("Cancel", QMessageBox.ButtonRole.RejectRole)
-            msg.exec()
-            if msg.clickedButton() == copy_brew_btn:
-                QGuiApplication.clipboard().setText("brew install cloudflared")
-            elif msg.clickedButton() == dl_btn:
-                if platform.machine() == "arm64":
-                    url = "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-darwin-arm64.tgz"
-                else:
-                    url = "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-darwin-amd64.tgz"
-                QDesktopServices.openUrl(QUrl(url))
                 
         else: # linux
             msg.setText("This feature needs a dependency Cloudflare Tunnel which is not installed, please insatll it to continue using this using your distro's instructions")

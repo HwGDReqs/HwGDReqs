@@ -45,8 +45,8 @@ app = APP(
     icon='assets/logo.icns',
     bundle_identifier='com.malikhw47.hwgdreqs',
     info_plist={
-        'CFBundleShortVersionString': '0.26.0',
-        'CFBundleVersion': '0.26.0',
+        'CFBundleShortVersionString': '0.26.1',
+        'CFBundleVersion': '0.26.1',
         'LSMinimumSystemVersion': '10.13',
         'NSHighResolutionCapable': True,
     },
