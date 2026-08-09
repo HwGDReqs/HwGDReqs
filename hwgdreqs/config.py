@@ -1,13 +1,15 @@
 import base64
+import binascii
 import json
 import os
+import shutil
 import stat
 import sys
 from pathlib import Path
 from cryptography.fernet import Fernet, InvalidToken
 
 APP_NAME = "HwGDReqs"
-APP_VERSION = "0.26.1"
+APP_VERSION = "1.0.0"
 
 TWITCH_CLIENT_ID = "hq65d75rdxry2cfjgemvydqp2vfr84"
 TWITCH_SCOPES = ["chat:read", "user:read:email", "moderator:read:followers"]
@@ -36,9 +38,6 @@ def exec_dir() -> Path:
     return Path(__file__).resolve().parent.parent
 
 
-import sys
-import shutil
-
 def data_dir() -> Path:
     if sys.platform == "win32":
         # Windows
@@ -50,9 +49,12 @@ def data_dir() -> Path:
         old_path = old_base / APP_NAME
         
         if old_path.exists() and not new_path.exists():
-            shutil.copytree(old_path, new_path)
-            # bye old data :3
-            shutil.rmtree(old_path)
+            try:
+                shutil.copytree(old_path, new_path)
+                # bye old data :3
+                shutil.rmtree(old_path)
+            except OSError:
+                pass
         
         new_path.mkdir(parents=True, exist_ok=True)
         return new_path
@@ -83,15 +85,59 @@ def token_file() -> Path:
 def key_file() -> Path:
     return data_dir() / "auth.key"
 
+_KEYRING_SERVICE = APP_NAME
+_KEYRING_USERNAME = "auth_key"
+
+
+def _keyring_get_key() -> bytes | None:
+    try:
+        import keyring
+        value = keyring.get_password(_KEYRING_SERVICE, _KEYRING_USERNAME)
+    except Exception:
+        return None
+    if not value:
+        return None
+    try:
+        return base64.urlsafe_b64decode(value.encode("ascii"))
+    except (ValueError, binascii.Error):
+        return None
+
+
+def _keyring_set_key(key: bytes) -> bool:
+    try:
+        import keyring
+        keyring.set_password(
+            _KEYRING_SERVICE,
+            _KEYRING_USERNAME,
+            base64.urlsafe_b64encode(key).decode("ascii"),
+        )
+        return True
+    except Exception:
+        return False
+
 
 def _get_or_create_key() -> bytes:
+    existing = _keyring_get_key()
+    if existing:
+        return existing
+
     path = key_file()
+
     if path.exists():
-        return path.read_bytes()
+        key = path.read_bytes()
+        if _keyring_set_key(key):
+            try:
+                path.unlink()
+            except OSError:
+                pass
+        return key
+
     key = Fernet.generate_key()
+    if _keyring_set_key(key):
+        return key
+
     path.write_bytes(key)
     try:
-        # no-op on platforms where chmod doesn't apply (e.g. Windows/NTFS)
         os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
     except OSError:
         pass

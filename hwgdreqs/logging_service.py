@@ -25,15 +25,19 @@ def update_console_logging(enabled: bool) -> None:
         for handler in stream_handlers:
             logger.removeHandler(handler)
 
+_initialized = False
+
 
 def get_logger() -> logging.Logger:
+    global _initialized
+
     log_dir = data_dir() / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
 
     log_file = log_dir / "hwgdreqs.log"
 
     logger = logging.getLogger("hwgdreqs")
-    
+
     has_file_handler = any(isinstance(h, logging.FileHandler) for h in logger.handlers)
     if not has_file_handler:
         logger.setLevel(logging.INFO)
@@ -48,17 +52,19 @@ def get_logger() -> logging.Logger:
         file_handler.setFormatter(formatter)
         logger.addHandler(file_handler)
 
-    print_to_console = False
-    try:
-        from hwgdreqs.config import queue_file
-        path = queue_file()
-        if path.exists():
-            data = json.loads(path.read_text(encoding="utf-8"))
-            print_to_console = bool(data.get("print_full_log_to_console", False))
-    except Exception:
-        pass
+    if not _initialized:
+        _initialized = True
+        print_to_console = False
+        try:
+            from hwgdreqs.config import queue_file
+            path = queue_file()
+            if path.exists():
+                data = json.loads(path.read_text(encoding="utf-8"))
+                print_to_console = bool(data.get("print_full_log_to_console", False))
+        except Exception:
+            pass
 
-    update_console_logging(print_to_console)
+        update_console_logging(print_to_console)
 
     return logger
 

@@ -16,7 +16,7 @@ class SessionValidationWorker(QThread):
 
         validated = validate_session(
             session,
-            on_pending=lambda: self.auth_status.emit("seeing auth i guess..."),
+            on_pending=lambda: self.auth_status.emit("Checking Twitch login..."),
         )
         if validated:
             self.validation_complete.emit(validated)

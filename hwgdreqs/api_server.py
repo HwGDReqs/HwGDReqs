@@ -61,7 +61,7 @@ def _make_handler(queue: QueueManager, session: TwitchSession | None = None, cha
 
         def do_GET(self) -> None:
             path = urlparse(self.path).path
-            
+
             if path == "/swagger" or path == "/swagger/":
                 try:
                     with open("assets/swagger/swagger.html", "rb") as f:
@@ -128,16 +128,34 @@ def _make_handler(queue: QueueManager, session: TwitchSession | None = None, cha
                 levels = queue.levels
                 self._send_json({"level": asdict(levels[0]) if levels else None})
                 return
+
+            if path == "/requests-state":
+                self._send_json({"enabled": queue.requests_enabled})
+                return
+
+            self._send_json({"ok": False, "error": "not_found"}, status=404)
+
+        def do_DELETE(self) -> None:
+            path = urlparse(self.path).path
+            if path == "/queue":
+                queue.clear_queue()
+                self._send_json({"ok": True})
+                return
+            self._send_json({"ok": False, "error": "not_found"}, status=404)
+
+        def do_POST(self) -> None:
+            path = urlparse(self.path).path
+            params = self._params()
+            level_id = params.get("id") or params.get("level_id") or ""
+
             if path == "/add":
-                from hwgdreqs.gdbrowser import fetch_level, GDBrowserError, LevelNotFoundError, LevelFetchTimeoutError
-                params = self._params()
-                level_id = params.get("id") or params.get("level_id") or ""
+                from hwgdreqs.gdbrowser import fetch_level_normalized, GDBrowserError, LevelNotFoundError, LevelFetchTimeoutError
                 if not level_id:
                     self._send_json({"ok": False, "error": "missing_id"}, status=400)
                     return
-                
+
                 try:
-                    level_data = fetch_level(level_id)
+                    level_data = fetch_level_normalized(level_id)
                 except LevelFetchTimeoutError as e:
                     self._send_json({"ok": False, "error": str(e)}, status=504)
                     return
@@ -147,13 +165,13 @@ def _make_handler(queue: QueueManager, session: TwitchSession | None = None, cha
                 except GDBrowserError as e:
                     self._send_json({"ok": False, "error": str(e)}, status=500)
                     return
-                
+
                 requester = params.get("requester", "API")
                 platform = params.get("platform", "custom")
                 message = params.get("message", "")
                 priority = str(params.get("prio", "")).lower() == "true"
                 platform_icon = params.get("platform-icon", "")
-                
+
                 success = queue.add_level(
                     level_id=level_id,
                     name=level_data.get("name", ""),
@@ -173,23 +191,23 @@ def _make_handler(queue: QueueManager, session: TwitchSession | None = None, cha
                     priority=priority,
                     version=int(level_data.get("version", 0)),
                 )
-                
+
                 if success:
                     self._send_json({"ok": True})
                 else:
                     self._send_json({"ok": False, "error": "add_failed"}, status=400)
                 return
+
             if path == "/replace":
-                from hwgdreqs.gdbrowser import fetch_level, GDBrowserError, LevelNotFoundError, LevelFetchTimeoutError
-                params = self._params()
+                from hwgdreqs.gdbrowser import fetch_level_normalized, GDBrowserError, LevelNotFoundError, LevelFetchTimeoutError
                 old_level_id = params.get("id") or params.get("old_id") or ""
                 new_level_id = params.get("new_id") or params.get("new_level_id") or ""
                 if not old_level_id or not new_level_id:
                     self._send_json({"ok": False, "error": "missing_id"}, status=400)
                     return
-                
+
                 try:
-                    level_data = fetch_level(new_level_id)
+                    level_data = fetch_level_normalized(new_level_id)
                 except LevelFetchTimeoutError as e:
                     self._send_json({"ok": False, "error": str(e)}, status=504)
                     return
@@ -199,14 +217,14 @@ def _make_handler(queue: QueueManager, session: TwitchSession | None = None, cha
                 except GDBrowserError as e:
                     self._send_json({"ok": False, "error": str(e)}, status=500)
                     return
-                
+
                 requester = params.get("requester", "API")
                 platform = params.get("platform", "custom")
                 if platform.lower() in ["twitch", "youtube"]:
                     platform = "custom"
                 message = params.get("message", "")
                 platform_icon = params.get("platform-icon", "")
-                
+
                 queue.replace_level(
                     old_level_id,
                     level_id=str(level_data.get("id", new_level_id)),
@@ -228,112 +246,6 @@ def _make_handler(queue: QueueManager, session: TwitchSession | None = None, cha
                 )
                 self._send_json({"ok": True})
                 return
-            if path in ("/delete", "/banauthor", "/banrequester", "/blacklistlevel", "/clear", "/bantwitch"):
-                params = self._params()
-                level_id = params.get("id") or params.get("level_id") or ""
-
-                if path == "/delete":
-                    if not level_id:
-                        self._send_json({"ok": False, "error": "missing_id"}, status=400)
-                        return
-                    queue.remove_level(level_id)
-                    self._send_json({"ok": True})
-                    return
-
-                if path == "/banrequester":
-                    if not level_id:
-                        self._send_json({"ok": False, "error": "missing_id"}, status=400)
-                        return
-                    entry = self._find_entry(level_id)
-                    if not entry:
-                        self._send_json({"ok": False, "error": "not_found"}, status=404)
-                        return
-                    queue.blacklist_requester(entry.requester)
-                    self._send_json({"ok": True})
-                    return
-                
-                if path == "/banauthor":
-                    if not level_id:
-                        self._send_json({"ok": False, "error": "missing_id"}, status=400)
-                        return
-                    entry = self._find_entry(level_id)
-                    if not entry:
-                        self._send_json({"ok": False, "error": "not_found"}, status=404)
-                        return
-                    queue.blacklist_author(entry.author)
-                    self._send_json({"ok": True})
-                    return
-
-                if path == "/blacklistlevel":
-                    if not level_id:
-                        self._send_json({"ok": False, "error": "missing_id"}, status=400)
-                        return
-                    queue.blacklist_level(level_id)
-                    self._send_json({"ok": True})
-                    return
-
-                if path == "/bantwitch":
-                    if not level_id:
-                        self._send_json({"ok": False, "error": "missing_id"}, status=400)
-                        return
-                    entry = self._find_entry(level_id)
-                    if not entry:
-                        self._send_json({"ok": False, "error": "not_found"}, status=404)
-                        return
-                    if not session:
-                        self._send_json({"ok": False, "error": "no_twitch_session"}, status=400)
-                        return
-                    if not get_channel_moderate_enabled():
-                        self._send_json({"ok": False, "error": "moderation_not_enabled"}, status=400)
-                        return
-                    if entry.requester.lower() == session.login.lower():
-                        self._send_json({"ok": False, "error": "cannot_ban_self"}, status=400)
-                        return
-                    error = ban_twitch_user(session, entry.requester)
-                    if error:
-                        self._send_json({"ok": False, "error": error}, status=400)
-                    else:
-                        self._send_json({"ok": True})
-                    return
-
-                queue.clear_queue()
-                self._send_json({"ok": True})
-                return
-
-            if path == "/requests-on":
-                params = self._params()
-                queue.requests_enabled = True
-                if params.get("send-twitch", "").lower() == "true" and chat_callback:
-                    chat_callback(True)
-                self._send_json({"ok": True})
-                return
-
-            if path == "/requests-off":
-                params = self._params()
-                queue.requests_enabled = False
-                if params.get("send-twitch", "").lower() == "true" and chat_callback:
-                    chat_callback(False)
-                self._send_json({"ok": True})
-                return
-
-            if path == "/requests-state":
-                self._send_json({"enabled": queue.requests_enabled})
-                return
-
-            self._send_json({"ok": False, "error": "not_found"}, status=404)
-
-        def do_DELETE(self) -> None:
-            path = urlparse(self.path).path
-            if path == "/queue":
-                queue.clear_queue()
-                self._send_json({"ok": True})
-                return
-            self._send_json({"ok": False, "error": "not_found"}, status=404)
-
-        def do_POST(self) -> None:
-            path = urlparse(self.path).path
-            params = self._params()
-            level_id = params.get("id") or params.get("level_id") or ""
 
             if path == "/delete":
                 if not level_id:
@@ -354,7 +266,7 @@ def _make_handler(queue: QueueManager, session: TwitchSession | None = None, cha
                 queue.blacklist_requester(entry.requester)
                 self._send_json({"ok": True})
                 return
-            
+
             if path == "/banauthor":
                 if not level_id:
                     self._send_json({"ok": False, "error": "missing_id"}, status=400)
@@ -405,7 +317,6 @@ def _make_handler(queue: QueueManager, session: TwitchSession | None = None, cha
                 return
 
             if path == "/requests-on":
-                params = self._params()
                 queue.requests_enabled = True
                 if params.get("send-twitch", "").lower() == "true" and chat_callback:
                     chat_callback(True)
@@ -413,7 +324,6 @@ def _make_handler(queue: QueueManager, session: TwitchSession | None = None, cha
                 return
 
             if path == "/requests-off":
-                params = self._params()
                 queue.requests_enabled = False
                 if params.get("send-twitch", "").lower() == "true" and chat_callback:
                     chat_callback(False)

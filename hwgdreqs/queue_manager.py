@@ -122,6 +122,12 @@ class QueueManager(QObject):
         # i regret looking at ts now ppl will think ts is vibecoded
         self.changed.connect(callback, Qt.ConnectionType.QueuedConnection)
 
+    def remove_listener(self, callback: Callable[[], None]) -> None:
+        try:
+            self.changed.disconnect(callback)
+        except (RuntimeError, TypeError):
+            pass
+
     def _notify(self) -> None:
         self.changed.emit()
 
@@ -361,11 +367,14 @@ class QueueManager(QObject):
 
     @print_full_log_to_console.setter
     def print_full_log_to_console(self, value: bool) -> None:
-        # H2 fix: this setter previously didn't persist the value at all,
-        # so the toggle silently reverted after an app restart.
         with self._lock:
             self._data.print_full_log_to_console = bool(value)
             self.save()
+        try:
+            from hwgdreqs.logging_service import update_console_logging
+            update_console_logging(bool(value))
+        except Exception:
+            pass
 
     @property
     def requests_enabled(self) -> bool:
@@ -377,11 +386,6 @@ class QueueManager(QObject):
         with self._lock:
             self._data.requests_enabled = bool(value)
             self.save()
-        try:
-            from hwgdreqs.logging_service import update_console_logging
-            update_console_logging(bool(value))
-        except Exception:
-            pass
         self._notify()
 
     @property
@@ -706,11 +710,15 @@ class QueueManager(QObject):
         author_lower = author.lower()
         requester_lower = requester.lower()
 
+        accepted = True
+        unblacklisted_now = False
+        was_empty = False
+        entry = None
+
         with self._lock:
             if not self._data.requests_enabled:
-                return False
-
-            if level_id in self._data.blacklist_levels:
+                accepted = False
+            elif level_id in self._data.blacklist_levels:
                 if self._data.auto_blacklist_unless_updated:
                     old_version = 0
                     for hist_entry in self._data.level_history:
@@ -720,75 +728,84 @@ class QueueManager(QObject):
                     if old_version != 0 and version != old_version:
                         self._data.blacklist_levels = [lid for lid in self._data.blacklist_levels if lid != level_id]
                         self._data.blacklist_timestamps["levels"].pop(level_id, None)
+                        unblacklisted_now = True
                         log_level_unblacklisted(level_id)
                     else:
-                        return False
+                        accepted = False
                 else:
-                    return False
-            if author_lower in [a.lower() for a in self._data.blacklist_authors]:
-                return False
-            if requester_lower in [r.lower() for r in self._data.blacklist_requesters]:
-                return False
-            if any(entry.id == level_id for entry in self._data.levels):
-                return False
-            if not self._data.allow_any_level:
+                    accepted = False
+
+            if accepted and author_lower in [a.lower() for a in self._data.blacklist_authors]:
+                accepted = False
+            if accepted and requester_lower in [r.lower() for r in self._data.blacklist_requesters]:
+                accepted = False
+            if accepted and any(entry.id == level_id for entry in self._data.levels):
+                accepted = False
+            if accepted and not self._data.allow_any_level:
                 if difficulty not in self._data.allowed_difficulties:
-                    return False
-                if length and length not in self._data.allowed_lengths:
-                    return False
-                if self._data.no_disliked and disliked:
-                    return False
-
-            if self._data.max_levels_per_requester > 0:
+                    accepted = False
+                elif length and length not in self._data.allowed_lengths:
+                    accepted = False
+                elif self._data.no_disliked and disliked:
+                    accepted = False
+            if accepted and self._data.max_levels_per_requester > 0:
                 if self.get_requester_level_count(requester) >= self._data.max_levels_per_requester:
-                    return False
+                    accepted = False
 
-            if timestamp is None:
-                timestamp = time.time()
+            if accepted:
+                if timestamp is None:
+                    timestamp = time.time()
 
-            was_empty = len(self._data.levels) == 0
+                was_empty = len(self._data.levels) == 0
 
-            entry = LevelEntry(
-                id=level_id,
-                name=name,
-                author=author,
-                difficulty=difficulty,
-                requester=requester,
-                platform=platform,
-                platform_icon=platform_icon,
-                message=message,
-                description=description,
-                length=length,
-                large=large,
-                two_player=two_player,
-                timestamp=timestamp,
-                likes=likes,
-                downloads=downloads,
-                disliked=disliked,
-                priority=priority,
-                version=version,
-                superchat=superchat,
-                superchat_amount=superchat_amount,
-                member=member,
-            )
+                entry = LevelEntry(
+                    id=level_id,
+                    name=name,
+                    author=author,
+                    difficulty=difficulty,
+                    requester=requester,
+                    platform=platform,
+                    platform_icon=platform_icon,
+                    message=message,
+                    description=description,
+                    length=length,
+                    large=large,
+                    two_player=two_player,
+                    timestamp=timestamp,
+                    likes=likes,
+                    downloads=downloads,
+                    disliked=disliked,
+                    priority=priority,
+                    version=version,
+                    superchat=superchat,
+                    superchat_amount=superchat_amount,
+                    member=member,
+                )
 
-            if priority:
-                insert_idx = 0
-                for idx, e in enumerate(self._data.levels):
-                    if e.priority:
-                        insert_idx = idx + 1
-                self._data.levels.insert(insert_idx, entry)
-            else:
-                self._data.levels.append(entry)
+                if priority:
+                    insert_idx = 0
+                    for idx, e in enumerate(self._data.levels):
+                        if e.priority:
+                            insert_idx = idx + 1
+                    self._data.levels.insert(insert_idx, entry)
+                else:
+                    self._data.levels.append(entry)
 
-            self.increment_requester_level_count(requester)
-            self.save()
+                self.increment_requester_level_count(requester)
+                self.save()
+            elif unblacklisted_now:
+                self.save()
 
-        self._notify()
-        if was_empty:
-            self.first_level_added.emit(entry)
-        log_level_added(level_id, name, requester, platform)
-        return True
+        if accepted:
+            self._notify()
+            if was_empty:
+                self.first_level_added.emit(entry)
+            log_level_added(level_id, name, requester, platform)
+            return True
+
+        if unblacklisted_now:
+            self._notify()
+        return False
 
     def remove_level(self, level_id: str) -> None:
         with self._lock:

@@ -382,12 +382,14 @@ def validate_session(
     on_pending: Callable[[], None] | None = None,
     max_retries: int = 6,
     max_backoff: float = 60.0,
+    max_refresh_attempts: int = 3,
 ) -> TwitchSession | None:
     # M2 fix: this used to retry network errors (requests.RequestException)
     # forever with no deadline, which could hang the caller's QEventLoop
     # indefinitely if the network never recovers. Now it retries a bounded
     # number of times with exponential backoff, then gives up cleanly.
     attempt = 0
+    refresh_attempt = 0
     while True:
         if on_pending:
             on_pending()
@@ -399,6 +401,9 @@ def validate_session(
             save_auth(session.to_auth_dict())
             return session
         except TwitchAuthError:
+            refresh_attempt += 1
+            if refresh_attempt > max_refresh_attempts:
+                return None
             refreshed = refresh_session(session)
             if refreshed:
                 continue

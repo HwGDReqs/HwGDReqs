@@ -55,8 +55,8 @@
       }
     },
     "/add": {
-      "get": {
-        "summary": "Add a level to the queue",
+      "post": {
+        "summary": "Add a level to the queue (POST)",
         "parameters": [
           {
             "name": "id",
@@ -112,8 +112,8 @@
       }
     },
     "/replace": {
-      "get": {
-        "summary": "Replace a level in the queue",
+      "post": {
+        "summary": "Replace a level in the queue (POST)",
         "parameters": [
           {
             "name": "id",
@@ -171,8 +171,8 @@
       }
     },
     "/delete": {
-      "get": {
-        "summary": "Delete a level from the queue",
+      "post": {
+        "summary": "Delete a level from the queue (POST)",
         "parameters": [
           {
             "name": "id",
@@ -201,8 +201,8 @@
       }
     },
     "/blacklistlevel": {
-      "get": {
-        "summary": "Blacklist a level",
+      "post": {
+        "summary": "Blacklist a level (POST)",
         "parameters": [
           {
             "name": "id",
@@ -221,8 +221,8 @@
       }
     },
     "/banauthor": {
-      "get": {
-        "summary": "Ban an author",
+      "post": {
+        "summary": "Ban an author (POST)",
         "parameters": [
           {
             "name": "id",
@@ -241,8 +241,8 @@
       }
     },
     "/banrequester": {
-      "get": {
-        "summary": "Ban a requester",
+      "post": {
+        "summary": "Ban a requester (POST)",
         "parameters": [
           {
             "name": "id",
@@ -261,8 +261,8 @@
       }
     },
     "/bantwitch": {
-      "get": {
-        "summary": "Ban a requester on Twitch",
+      "post": {
+        "summary": "Ban a requester on Twitch (POST)",
         "parameters": [
           {
             "name": "id",
@@ -281,8 +281,8 @@
       }
     },
     "/clear": {
-      "get": {
-        "summary": "Clear the queue",
+      "post": {
+        "summary": "Clear the queue (POST)",
         "responses": {
           "200": {
             "description": "OK"
@@ -291,8 +291,8 @@
       }
     },
     "/requests-on": {
-      "get": {
-        "summary": "Enable requests",
+      "post": {
+        "summary": "Enable requests (POST)",
         "parameters": [
           {
             "name": "send-twitch",
@@ -310,8 +310,8 @@
       }
     },
     "/requests-off": {
-      "get": {
-        "summary": "Disable requests",
+      "post": {
+        "summary": "Disable requests (POST)",
         "parameters": [
           {
             "name": "send-twitch",

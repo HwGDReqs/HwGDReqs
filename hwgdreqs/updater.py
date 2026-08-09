@@ -1,3 +1,4 @@
+import hashlib
 import platform
 import sys
 import os
@@ -55,8 +56,43 @@ def _detect_run_mode() -> str:
     return "source"
 
 
+def _parse_version(v: str) -> tuple[int, ...] | None:
+    """Parse a dotted numeric version string ('1.0.0', 'v1.2') into a tuple
+    of ints for comparison. Returns None if it doesn't look like one.
+    """
+    v = v.strip().lower().lstrip("v")
+    parts = v.split(".")
+    try:
+        return tuple(int(p) for p in parts)
+    except ValueError:
+        return None
+
+
+def _is_update_available(latest: str, current: str) -> bool:
+    latest_t = _parse_version(latest)
+    current_t = _parse_version(current)
+    if latest_t is not None and current_t is not None:
+        return latest_t > current_t
+    return latest.strip().lower().lstrip("v") != current.strip().lower().lstrip("v")
+
+
+def _asset_digests(release_data: dict) -> dict[str, str]:
+    """Map asset filename -> 'sha256:<hex>' digest string, from a GitHub
+    releases API response. GitHub computes and exposes this automatically
+    for assets uploaded since mid-2025; older assets may have a null
+    digest, in which case the name is simply absent from the returned dict.
+    """
+    out: dict[str, str] = {}
+    for asset in release_data.get("assets", []) or []:
+        name = asset.get("name")
+        digest = asset.get("digest")
+        if name and digest:
+            out[name] = digest
+    return out
+
+
 class UpdateCheckerWorker(QThread):
-    finished = Signal(str, str)  # tag_name, body
+    finished = Signal(str, str, dict)  # tag_name, body, asset_digests (filename -> "sha256:<hex>")
     error = Signal(str)
 
     def run(self) -> None:
@@ -71,7 +107,7 @@ class UpdateCheckerWorker(QThread):
             data = response.json()
             tag_name = data.get("tag_name", "").strip()
             body = data.get("body", "").strip()
-            self.finished.emit(tag_name, body)
+            self.finished.emit(tag_name, body, _asset_digests(data))
         except Exception as e:
             self.error.emit(str(e))
 
@@ -81,11 +117,12 @@ class UpdateDownloadWorker(QThread):
     finished = Signal()
     error = Signal(str)
 
-    def __init__(self, url: str, dest_path: str, parent=None) -> None:
+    def __init__(self, url: str, dest_path: str, parent=None, *, expected_digest: str | None = None) -> None:
         super().__init__(parent)
         self.url = url
         self.dest_path = dest_path
         self._is_cancelled = False
+        self._expected_digest = expected_digest
 
     def cancel(self) -> None:
         self._is_cancelled = True
@@ -99,6 +136,7 @@ class UpdateDownloadWorker(QThread):
             response = requests.get(self.url, headers=headers, stream=True, timeout=30)
             response.raise_for_status()
 
+            hasher = hashlib.sha256()
             total_length = response.headers.get('content-length')
             if total_length is None:
                 with open(self.dest_path, "wb") as f:
@@ -108,9 +146,13 @@ class UpdateDownloadWorker(QThread):
                             return
                         if chunk:
                             f.write(chunk)
-                if not self._is_cancelled:
-                    self.progress.emit(100)
-                    self.finished.emit()
+                            hasher.update(chunk)
+                if self._is_cancelled:
+                    return
+                if not self._verify(hasher):
+                    return
+                self.progress.emit(100)
+                self.finished.emit()
             else:
                 total_length = int(total_length)
                 dl = 0
@@ -121,15 +163,33 @@ class UpdateDownloadWorker(QThread):
                             return
                         if chunk:
                             f.write(chunk)
+                            hasher.update(chunk)
                             dl += len(chunk)
                             percent = int((dl / total_length) * 100)
                             self.progress.emit(percent)
-                if not self._is_cancelled:
-                    self.finished.emit()
+                if self._is_cancelled:
+                    return
+                if not self._verify(hasher):
+                    return
+                self.finished.emit()
         except Exception as e:
             self._cleanup()
             if not self._is_cancelled:
                 self.error.emit(str(e))
+
+    def _verify(self, hasher) -> bool:
+        if not self._expected_digest:
+            return True
+        actual = f"sha256:{hasher.hexdigest()}"
+        if actual == self._expected_digest:
+            return True
+        self._cleanup()
+        self.error.emit(
+            "Downloaded file failed checksum verification against GitHub's "
+            "published digest for this release. The download may have been "
+            "corrupted or tampered with, so it was not installed."
+        )
+        return False
 
     def _cleanup(self) -> None:
         try:
@@ -189,20 +249,17 @@ class UpdaterTab(QWidget):
 
         self._check_worker = UpdateCheckerWorker(self)
         self._check_worker.finished.connect(
-            lambda tag, body: self._on_check_finished(tag, body, silent)
+            lambda tag, body, digests: self._on_check_finished(tag, body, digests, silent)
         )
         self._check_worker.error.connect(
             lambda err: self._on_check_error(err, silent)
         )
         self._check_worker.start()
 
-    def _on_check_finished(self, latest_version: str, body: str, silent=False) -> None:
+    def _on_check_finished(self, latest_version: str, body: str, digests: dict, silent=False) -> None:
         self._check_btn.setEnabled(True)
 
-        norm_latest = latest_version.strip().lower().lstrip('v')
-        norm_current = APP_VERSION.strip().lower().lstrip('v')
-
-        if norm_latest != norm_current:
+        if _is_update_available(latest_version, APP_VERSION):
             self._status_label.setText(f"Update available: {latest_version}")
             self._status_label.setStyleSheet("color: #4caf50; font-weight: bold;")
 
@@ -218,9 +275,10 @@ class UpdaterTab(QWidget):
             if self._run_mode == "frozen_windows":
                 # PyInstaller on Windows: download installer and run it
                 if ask_update(f"There is an update ({latest_version}). Download and install it now?"):
-                    url = "https://github.com/HwGDReqs/HwGDReqs/releases/latest/download/HwGDReqs-setup-online.exe"
-                    dest = str(Path(tempfile.gettempdir()) / "HwGDReqs-setup-online.exe")
-                    self._download_update(url, dest, mode="windows_installer")
+                    filename = "HwGDReqs-setup-online.exe"
+                    url = f"https://github.com/HwGDReqs/HwGDReqs/releases/latest/download/{filename}"
+                    dest = str(Path(tempfile.gettempdir()) / filename)
+                    self._download_update(url, dest, mode="windows_installer", expected_digest=digests.get(filename))
 
             elif self._run_mode == "frozen_macos":
                 # PyInstaller on macOS: download DMG to ~/Downloads
@@ -240,7 +298,7 @@ class UpdaterTab(QWidget):
                     dest_path = downloads_dir / f"{stem} ({counter}).{suffix}"
                     counter += 1
                 if ask_update(f"There is an update ({latest_version}).\nDownload {dmg_name} to your Downloads folder?"):
-                    self._download_update(url, str(dest_path), mode="macos_dmg")
+                    self._download_update(url, str(dest_path), mode="macos_dmg", expected_digest=digests.get(dmg_name))
 
             elif self._run_mode == "pip":
                 # pip installation: tell the user to run pip upgrade
@@ -274,11 +332,7 @@ class UpdaterTab(QWidget):
                 f"Could not check for updates:\n{error_msg}"
             )
 
-    def _download_update(self, download_url: str, dest_file: str, mode: str = "windows_installer") -> None:
-        """Start downloading the update.
-        
-        mode: 'windows_installer' (run .exe) or 'macos_dmg' (notify user)
-        """
+    def _download_update(self, download_url: str, dest_file: str, mode: str = "windows_installer", *, expected_digest: str | None = None) -> None:
         self._download_mode = mode
         self._check_btn.setEnabled(False)
         self._status_label.setText("Downloading update...")
@@ -290,7 +344,7 @@ class UpdaterTab(QWidget):
         self._progress_dialog.setMinimumDuration(0)
         self._progress_dialog.setValue(0)
 
-        self._download_worker = UpdateDownloadWorker(download_url, dest_file, self)
+        self._download_worker = UpdateDownloadWorker(download_url, dest_file, self, expected_digest=expected_digest)
         self._download_worker.progress.connect(self._progress_dialog.setValue)
         self._download_worker.finished.connect(lambda: self._on_download_finished(dest_file))
         self._download_worker.error.connect(self._on_download_error)
@@ -356,13 +410,13 @@ class UpdaterTab(QWidget):
         sys.exit(0)
 
 
-def _download_update_for_startup(parent, download_url, dest_file, mode="windows_installer"):
+def _download_update_for_startup(parent, download_url, dest_file, mode="windows_installer", *, expected_digest=None):
     parent._startup_progress_dialog = QProgressDialog("Downloading update...", "Cancel", 0, 100, parent)
     parent._startup_progress_dialog.setWindowModality(Qt.WindowModality.WindowModal)
     parent._startup_progress_dialog.setMinimumDuration(0)
     parent._startup_progress_dialog.setValue(0)
     
-    parent._startup_download_worker = UpdateDownloadWorker(download_url, dest_file, parent)
+    parent._startup_download_worker = UpdateDownloadWorker(download_url, dest_file, parent, expected_digest=expected_digest)
     
     def cancel_download():
         parent._startup_download_worker.cancel()
@@ -414,11 +468,8 @@ def check_for_updates_on_startup(parent):
     parent._check_update_worker = UpdateCheckerWorker(parent)
     run_mode = _detect_run_mode()
     
-    def on_finished(latest_version, body):
-        norm_latest = latest_version.strip().lower().lstrip('v')
-        norm_current = APP_VERSION.strip().lower().lstrip('v')
-        
-        if norm_latest != norm_current:
+    def on_finished(latest_version, body, digests):
+        if _is_update_available(latest_version, APP_VERSION):
             def ask_update(prompt: str) -> bool:
                 msg = QMessageBox(parent)
                 msg.setWindowTitle("Update Available")
@@ -430,9 +481,10 @@ def check_for_updates_on_startup(parent):
 
             if run_mode == "frozen_windows":
                 if ask_update(f"There is an update ({latest_version}). Download and install it now?"):
-                    url = "https://github.com/HwGDReqs/HwGDReqs/releases/latest/download/HwGDReqs-setup-online.exe"
-                    dest = str(Path(tempfile.gettempdir()) / "HwGDReqs-setup-online.exe")
-                    _download_update_for_startup(parent, url, dest, mode="windows_installer")
+                    filename = "HwGDReqs-setup-online.exe"
+                    url = f"https://github.com/HwGDReqs/HwGDReqs/releases/latest/download/{filename}"
+                    dest = str(Path(tempfile.gettempdir()) / filename)
+                    _download_update_for_startup(parent, url, dest, mode="windows_installer", expected_digest=digests.get(filename))
 
             elif run_mode == "frozen_macos":
                 machine = platform.machine().lower()
@@ -450,7 +502,7 @@ def check_for_updates_on_startup(parent):
                     dest_path = downloads_dir / f"{stem} ({counter}).{suffix}"
                     counter += 1
                 if ask_update(f"There is an update ({latest_version}).\nDownload {dmg_name} to your Downloads folder?"):
-                    _download_update_for_startup(parent, url, str(dest_path), mode="macos_dmg")
+                    _download_update_for_startup(parent, url, str(dest_path), mode="macos_dmg", expected_digest=digests.get(dmg_name))
 
             elif run_mode == "pip":
                 if ask_update(f"There is an update ({latest_version}). To update, run:\n\n`pip install --upgrade hwgdreqs`\n\nWould you like to copy this command to clipboard?"):

@@ -2,7 +2,7 @@
 # Maintainer: malikhw <help.malicorporation@gmail.com>
 
 pkgname=hwgdreqs
-pkgver=0.26.1
+pkgver=1.0.0
 pkgrel=1
 pkgdesc="Geometry Dash level request manager for streamers with Twitch and YouTube chat integration"
 arch=('any')

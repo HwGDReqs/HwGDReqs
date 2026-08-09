@@ -164,3 +164,7 @@ class QueuePopoutWindow(QMainWindow):
     def closeEvent(self, event):
         self._settings.setValue("popout_geometry", self.saveGeometry())
         super().closeEvent(event)
+
+    def shutdown(self) -> None:
+        self._queue.remove_listener(self.refresh)
+        self.close()

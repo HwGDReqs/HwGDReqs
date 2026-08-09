@@ -188,7 +188,7 @@ class GeneralTab(QWidget):
 
         self._print_full_log_cb = QCheckBox("print full log to console (devs only)")
         self._print_full_log_cb.setChecked(queue.print_full_log_to_console)
-        self._print_full_log_cb.setToolTip("When enabled, logs everything to the console alongside the hwgdreqs.log file.")
+        self._print_full_log_cb.setToolTip("When enabled, logs everything to the console alongside the hwgdreqs.log file. (Right now its broken...)")
         layout.addWidget(self._print_full_log_cb)
 
         # Queue Popout Scale

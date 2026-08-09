@@ -1392,5 +1392,5 @@ class MainWindow(QMainWindow):
             self._youtube_chat_window.close()
         # kill popout window
         if self._popout_window:
-            self._popout_window.close()
+            self._popout_window.shutdown()
         super().closeEvent(event)

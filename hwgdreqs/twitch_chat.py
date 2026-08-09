@@ -8,7 +8,7 @@ import threading
 from PySide6.QtCore import QObject, Signal
 
 from hwgdreqs.config import LEVEL_ID_PATTERN, COMMA_LEVEL_ID_PATTERN, TWITCH_IRC_HOST, TWITCH_IRC_PORT
-from hwgdreqs.gdbrowser import fetch_level, GDBrowserError, LevelNotFoundError, LevelFetchTimeoutError
+from hwgdreqs.gdbrowser import fetch_level_normalized, placeholder_level_data, GDBrowserError, LevelNotFoundError, LevelFetchTimeoutError
 from hwgdreqs.logging_service import get_logger
 from hwgdreqs.queue_manager import QueueManager
 from hwgdreqs.twitch_auth import TwitchSession, check_twitch_follower
@@ -359,7 +359,7 @@ class TwitchChatWorker(QObject):
             return
         
         try:
-            data = fetch_level(new_level_id)
+            data = fetch_level_normalized(new_level_id)
         except LevelFetchTimeoutError:
             logger.warning(f"Could not fetch new level {new_level_id} (timeout - gdbrowser took too long)")
             self.status_changed.emit(f"Could not fetch new level {new_level_id} (timeout - gdbrowser took too long)")
@@ -372,18 +372,14 @@ class TwitchChatWorker(QObject):
             logger.warning(f"Could not fetch new level {new_level_id}: {str(e)}")
             self.status_changed.emit(f"Could not fetch new level {new_level_id}: {str(e)}")
             return
-        
-        difficulty = str(data.get("difficulty", "Unrated"))
-        if difficulty in ["NA", "Unknown"]:
-            difficulty = "Unrated"
-        
+
         logger.info(f"Replacing {old_level_id} with {new_level_id}")
         self._queue.replace_level(
             old_level_id,
             level_id=str(data.get("id", new_level_id)),
             name=str(data.get("name", "Unknown")),
             author=str(data.get("author", "Unknown")),
-            difficulty=difficulty,
+            difficulty=data.get("difficulty", "Unrated"),
             requester=requester,
             message=message,
             description=str(data.get("description", "")),
@@ -400,102 +396,72 @@ class TwitchChatWorker(QObject):
 
     def _enqueue_level(self, requester: str, level_id: str, message: str, priority: bool = False) -> bool:
         try:
-            data = fetch_level(level_id)
-            difficulty = str(data.get("difficulty", "Unrated"))
-            if difficulty in ["NA", "Unknown"]:
-                difficulty = "Unrated"
-            added = self._queue.add_level(
-                level_id=str(data.get("id", level_id)),
-                name=str(data.get("name", "Unknown")),
-                author=str(data.get("author", "Unknown")),
-                difficulty=difficulty,
-                requester=requester,
-                message=message,
-                description=str(data.get("description", "")),
-                length=str(data.get("length", "")),
-                large=bool(data.get("large", False)),
-                two_player=bool(data.get("twoPlayer", False)),
-                disliked=bool(data.get("disliked", False)),
-                platform="twitch",
-                likes=int(data.get("likes", 0)),
-                downloads=int(data.get("downloads", 0)),
-                version=int(data.get("version", 0)),
-                priority=priority,
-            )
-            if added:
-                self.status_changed.emit(f"Queued: '{data.get('name')}' by '{data.get('author')}' from '{requester}'")
-            return added
+            data = fetch_level_normalized(level_id)
         except LevelFetchTimeoutError:
-            if not self._queue.allow_any_level:
-                logger.warning(f"Failed to fetch level {level_id} (timeout - gdbrowser took too long)")
-                return False
-            added = self._queue.add_level(
-                level_id=level_id,
-                name=f"⚠️ {level_id}",
-                author="Unknown",
-                difficulty="Unrated",
-                requester=requester,
-                message=message,
-                description="no data... i guess",
-                length="",
-                large=False,
-                two_player=False,
-                disliked=False,
-                platform="twitch",
-                likes=0,
-                downloads=0,
-                priority=priority,
-            )
-            if added:
-                self.status_changed.emit(f"Failed to fetch level (timeout - gdbrowser took too long), so added bare ID")
-            return added
+            return self._enqueue_placeholder(requester, level_id, message, priority, "timeout - gdbrowser took too long")
         except LevelNotFoundError:
+            logger.warning(f"Level ID {level_id} not found on Geometry Dash servers")
             if not self._queue.allow_any_level:
-                logger.warning(f"Level ID {level_id} not found on Geometry Dash servers")
                 self.status_changed.emit(f"Level ID {level_id} not found on Geometry Dash servers")
                 return False
-            added = self._queue.add_level(
-                level_id=level_id,
-                name=f"⚠️ {level_id}",
-                author="Unknown",
-                difficulty="Unrated",
-                requester=requester,
-                message=message,
-                description="no data... i guess",
-                length="",
-                large=False,
-                two_player=False,
-                disliked=False,
-                platform="twitch",
-                likes=0,
-                downloads=0,
-                priority=priority,
+            return self._enqueue_placeholder(
+                requester, level_id, message, priority,
+                reason=f"Level ID {level_id} not found on Geometry Dash servers",
+                status_text=f"Level ID {level_id} not found on Geometry Dash servers, so added bare ID",
             )
-            if added:
-                self.status_changed.emit(f"Level ID {level_id} not found on Geometry Dash servers, so added bare ID")
-            return added
         except GDBrowserError as e:
-            if not self._queue.allow_any_level:
-                logger.warning(f"Failed to fetch level {level_id}: {str(e)}")
-                return False
-            added = self._queue.add_level(
-                level_id=level_id,
-                name=f"⚠️ {level_id}",
-                author="Unknown",
-                difficulty="Unrated",
-                requester=requester,
-                message=message,
-                description="no data... i guess",
-                length="",
-                large=False,
-                two_player=False,
-                disliked=False,
-                platform="twitch",
-                likes=0,
-                downloads=0,
-                priority=priority,
-            )
-            if added:
-                self.status_changed.emit(f"Failed to fetch level {level_id} ({str(e)}), so added bare ID")
-            return added
+            return self._enqueue_placeholder(requester, level_id, message, priority, str(e))
+
+        added = self._queue.add_level(
+            level_id=str(data.get("id", level_id)),
+            name=str(data.get("name", "Unknown")),
+            author=str(data.get("author", "Unknown")),
+            difficulty=data.get("difficulty", "Unrated"),
+            requester=requester,
+            message=message,
+            description=str(data.get("description", "")),
+            length=str(data.get("length", "")),
+            large=bool(data.get("large", False)),
+            two_player=bool(data.get("twoPlayer", False)),
+            disliked=bool(data.get("disliked", False)),
+            platform="twitch",
+            likes=int(data.get("likes", 0)),
+            downloads=int(data.get("downloads", 0)),
+            version=int(data.get("version", 0)),
+            priority=priority,
+        )
+        if added:
+            self.status_changed.emit(f"Queued: '{data.get('name')}' by '{data.get('author')}' from '{requester}'")
+        return added
+
+    def _enqueue_placeholder(self, requester: str, level_id: str, message: str, priority: bool, reason: str, status_text: str | None = None) -> bool:
+        """Shared fallback for _enqueue_level: if allow_any_level is on, add
+        a bare-ID placeholder entry when the real level data couldn't be
+        fetched (timeout / not found / other GDBrowser error); otherwise
+        just log and report the failure.
+        """
+        if not self._queue.allow_any_level:
+            logger.warning(f"Failed to fetch level {level_id} ({reason})")
+            return False
+        placeholder = placeholder_level_data(level_id)
+        added = self._queue.add_level(
+            level_id=level_id,
+            name=placeholder["name"],
+            author=placeholder["author"],
+            difficulty=placeholder["difficulty"],
+            requester=requester,
+            message=message,
+            description=placeholder["description"],
+            length=placeholder["length"],
+            large=placeholder["large"],
+            two_player=placeholder["twoPlayer"],
+            disliked=placeholder["disliked"],
+            platform="twitch",
+            likes=placeholder["likes"],
+            downloads=placeholder["downloads"],
+            priority=priority,
+        )
+        if added:
+            self.status_changed.emit(status_text or f"Failed to fetch level ({reason}), so added bare ID")
+        return added
 

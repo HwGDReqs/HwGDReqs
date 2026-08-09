@@ -15,7 +15,7 @@ except ImportError:
     pytchat = None
 
 from hwgdreqs.config import LEVEL_ID_PATTERN
-from hwgdreqs.gdbrowser import fetch_level, GDBrowserError, LevelNotFoundError, LevelFetchTimeoutError
+from hwgdreqs.gdbrowser import fetch_level_normalized, placeholder_level_data, GDBrowserError, LevelNotFoundError, LevelFetchTimeoutError
 from hwgdreqs.logging_service import get_logger
 from hwgdreqs.queue_manager import QueueManager
 
@@ -141,7 +141,7 @@ class YoutubeChatWorker(QObject):
             return
 
         try:
-            data = fetch_level(new_level_id)
+            data = fetch_level_normalized(new_level_id)
         except LevelFetchTimeoutError:
             logger.warning(f"Could not fetch new level {new_level_id} (timeout - gdbrowser took too long)")
             self.status_changed.emit(f"Could not fetch new level {new_level_id} (timeout - gdbrowser took too long)")
@@ -155,17 +155,13 @@ class YoutubeChatWorker(QObject):
             self.status_changed.emit(f"Could not fetch new level {new_level_id}: {str(e)}")
             return
 
-        difficulty = str(data.get("difficulty", "Unrated"))
-        if difficulty in ["NA", "Unknown"]:
-            difficulty = "Unrated"
-
         logger.info(f"Replacing {old_level_id} with {new_level_id}")
         self._queue.replace_level(
             old_level_id,
             level_id=str(data.get("id", new_level_id)),
             name=str(data.get("name", "Unknown")),
             author=str(data.get("author", "Unknown")),
-            difficulty=difficulty,
+            difficulty=data.get("difficulty", "Unrated"),
             requester=requester,
             message=message,
             description=str(data.get("description", "")),
@@ -186,121 +182,88 @@ class YoutubeChatWorker(QObject):
                        priority: bool = False, superchat: bool = False,
                        superchat_amount: str = "", member: bool = False) -> bool:
         try:
-            data = fetch_level(level_id)
-            difficulty = str(data.get("difficulty", "Unrated"))
-            if difficulty in ["NA", "Unknown"]:
-                difficulty = "Unrated"
-            
-            added = self._queue.add_level(
-                level_id=str(data.get("id", level_id)),
-                name=str(data.get("name", "Unknown")),
-                author=str(data.get("author", "Unknown")),
-                difficulty=difficulty,
-                requester=requester,
-                message=message,
-                description=str(data.get("description", "")),
-                length=str(data.get("length", "")),
-                large=bool(data.get("large", False)),
-                two_player=bool(data.get("twoPlayer", False)),
-                disliked=bool(data.get("disliked", False)),
-                platform="youtube",
-                likes=int(data.get("likes", 0)),
-                downloads=int(data.get("downloads", 0)),
-                version=int(data.get("version", 0)),
-                priority=priority,
-                superchat=superchat,
-                superchat_amount=superchat_amount,
-                member=member,
-            )
-            if added:
-                logger.info(f"Queued: '{data.get('name')}' by '{data.get('author')}' from '{requester}'")
-                self.status_changed.emit(f"Queued: '{data.get('name')}' by '{data.get('author')}' from '{requester}'")
-            return added
+            data = fetch_level_normalized(level_id)
         except LevelFetchTimeoutError:
-            if not self._queue.allow_any_level:
-                logger.warning(f"Failed to fetch level {level_id} (timeout - gdbrowser took too long)")
-                return False
-            added = self._queue.add_level(
-                level_id=level_id,
-                name=f"⚠️ {level_id}",
-                author="Unknown",
-                difficulty="Unrated",
-                requester=requester,
-                message=message,
-                description="no data... i guess",
-                length="",
-                large=False,
-                two_player=False,
-                disliked=False,
-                platform="youtube",
-                likes=0,
-                downloads=0,
-                priority=priority,
-                superchat=superchat,
-                superchat_amount=superchat_amount,
-                member=member,
+            return self._enqueue_placeholder(
+                requester, level_id, message, priority, superchat, superchat_amount, member,
+                reason="timeout - gdbrowser took too long",
             )
-            if added:
-                logger.info(f"Failed to fetch level (timeout - gdbrowser took too long), so added bare ID")
-                self.status_changed.emit(f"Failed to fetch level (timeout - gdbrowser took too long), so added bare ID")
-            return added
         except LevelNotFoundError:
+            logger.warning(f"Level ID {level_id} not found on Geometry Dash servers")
             if not self._queue.allow_any_level:
-                logger.warning(f"Level ID {level_id} not found on Geometry Dash servers")
                 self.status_changed.emit(f"Level ID {level_id} not found on Geometry Dash servers")
                 return False
-            added = self._queue.add_level(
-                level_id=level_id,
-                name=f"⚠️ {level_id}",
-                author="Unknown",
-                difficulty="Unrated",
-                requester=requester,
-                message=message,
-                description="no data... i guess",
-                length="",
-                large=False,
-                two_player=False,
-                disliked=False,
-                platform="youtube",
-                likes=0,
-                downloads=0,
-                priority=priority,
-                superchat=superchat,
-                superchat_amount=superchat_amount,
-                member=member,
+            return self._enqueue_placeholder(
+                requester, level_id, message, priority, superchat, superchat_amount, member,
+                reason=f"Level ID {level_id} not found on Geometry Dash servers",
+                status_text=f"Level ID {level_id} not found on Geometry Dash servers, so added bare ID",
             )
-            if added:
-                logger.info(f"Level ID {level_id} not found on Geometry Dash servers, so added bare ID")
-                self.status_changed.emit(f"Level ID {level_id} not found on Geometry Dash servers, so added bare ID")
-            return added
         except GDBrowserError as e:
-            if not self._queue.allow_any_level:
-                logger.warning(f"Failed to fetch level {level_id}: {str(e)}")
-                return False
-            added = self._queue.add_level(
-                level_id=level_id,
-                name=f"⚠️ {level_id}",
-                author="Unknown",
-                difficulty="Unrated",
-                requester=requester,
-                message=message,
-                description="no data... i guess",
-                length="",
-                large=False,
-                two_player=False,
-                disliked=False,
-                platform="youtube",
-                likes=0,
-                downloads=0,
-                priority=priority,
-                superchat=superchat,
-                superchat_amount=superchat_amount,
-                member=member,
+            return self._enqueue_placeholder(
+                requester, level_id, message, priority, superchat, superchat_amount, member,
+                reason=str(e),
             )
-            if added:
-                logger.info(f"Failed to fetch level {level_id} ({str(e)}), so added bare ID")
-                self.status_changed.emit(f"Failed to fetch level {level_id} ({str(e)}), so added bare ID")
-            return added
+
+        added = self._queue.add_level(
+            level_id=str(data.get("id", level_id)),
+            name=str(data.get("name", "Unknown")),
+            author=str(data.get("author", "Unknown")),
+            difficulty=data.get("difficulty", "Unrated"),
+            requester=requester,
+            message=message,
+            description=str(data.get("description", "")),
+            length=str(data.get("length", "")),
+            large=bool(data.get("large", False)),
+            two_player=bool(data.get("twoPlayer", False)),
+            disliked=bool(data.get("disliked", False)),
+            platform="youtube",
+            likes=int(data.get("likes", 0)),
+            downloads=int(data.get("downloads", 0)),
+            version=int(data.get("version", 0)),
+            priority=priority,
+            superchat=superchat,
+            superchat_amount=superchat_amount,
+            member=member,
+        )
+        if added:
+            logger.info(f"Queued: '{data.get('name')}' by '{data.get('author')}' from '{requester}'")
+            self.status_changed.emit(f"Queued: '{data.get('name')}' by '{data.get('author')}' from '{requester}'")
+        return added
+
+    def _enqueue_placeholder(
+        self, requester: str, level_id: str, message: str, priority: bool,
+        superchat: bool, superchat_amount: str, member: bool,
+        reason: str, status_text: str | None = None,
+    ) -> bool:
+        if not self._queue.allow_any_level:
+            logger.warning(f"Failed to fetch level {level_id} ({reason})")
+            return False
+        placeholder = placeholder_level_data(level_id)
+        added = self._queue.add_level(
+            level_id=level_id,
+            name=placeholder["name"],
+            author=placeholder["author"],
+            difficulty=placeholder["difficulty"],
+            requester=requester,
+            message=message,
+            description=placeholder["description"],
+            length=placeholder["length"],
+            large=placeholder["large"],
+            two_player=placeholder["twoPlayer"],
+            disliked=placeholder["disliked"],
+            platform="youtube",
+            likes=placeholder["likes"],
+            downloads=placeholder["downloads"],
+            priority=priority,
+            superchat=superchat,
+            superchat_amount=superchat_amount,
+            member=member,
+        )
+        if added:
+            text = status_text or f"Failed to fetch level ({reason}), so added bare ID"
+            logger.info(text)
+            self.status_changed.emit(text)
+        return added
 
     def _run(self) -> None:
         if not YoutubeDL or not pytchat:
@@ -334,12 +297,6 @@ class YoutubeChatWorker(QObject):
                 try:
                     self._chat = pytchat.create(video_id=self._video_id, interruptable=False)
                 except TypeError:
-                    # Older pytchat versions don't accept interruptable=False and
-                    # try to install a SIGINT handler, which only works on the
-                    # main thread. Patch signal.signal out for the duration of
-                    # the call, serialized via _signal_patch_lock so concurrent
-                    # (re)connect attempts on other threads can't race on the
-                    # global signal module state.
                     with _signal_patch_lock:
                         original_signal = signal.signal
                         try:
