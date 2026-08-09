@@ -77,6 +77,7 @@ from hwgdreqs.youtube_chat import YoutubeChatWorker
 from hwgdreqs.config import asset_path, exec_dir
 from hwgdreqs.chat_window import ChatWindow
 from hwgdreqs.queue_popout_window import QueuePopoutWindow
+from hwgdreqs.cloudflared import CloudflaredManager
 
 
 class DraggableListWidget(QListWidget):
@@ -270,6 +271,7 @@ class MainWindow(QMainWindow):
         self._aredl_cache: dict[str, int] | None = None
         self._aredl_fetching = False
         self._active_toast = None
+        self._cloudflared = CloudflaredManager(self)
 
         self._queue.first_level_added.connect(self._show_toast)
         
@@ -1073,6 +1075,7 @@ class MainWindow(QMainWindow):
         dialog = SettingsDialog(
             self._queue,
             self._session.display_name if self._session else "",
+            self._cloudflared,
             self,
         )
         dialog.logged_out.connect(self._on_logged_out)
@@ -1381,6 +1384,7 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event) -> None:
         self._stop_chat()
         self._api_server.stop()
+        self._cloudflared.stop()
         # kill chat window
         if self._twitch_chat_window:
             self._twitch_chat_window.close()

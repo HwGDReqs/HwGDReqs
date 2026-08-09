@@ -40,6 +40,7 @@ from hwgdreqs.twitch_auth import (
     set_channel_moderate_enabled,
 )
 from hwgdreqs.youtube_auth import load_youtube_session, save_youtube_session, clear_youtube_auth, YoutubeSession
+from hwgdreqs.cloudflared import CloudflaredManager
 
 
 class BlacklistTab(QWidget):
@@ -414,7 +415,7 @@ from hwgdreqs.config import get_local_ip
 
 
 class ApiTab(QWidget):
-    def __init__(self, queue: QueueManager, parent=None) -> None:
+    def __init__(self, queue: QueueManager, cloudflared, parent=None) -> None:
         super().__init__(parent)
         self._queue = queue
         layout = QVBoxLayout(self)
@@ -474,6 +475,49 @@ class ApiTab(QWidget):
         self._port_warning_label.setStyleSheet("color: #d9822b;")  # amber warning color
         self._port_warning_label.hide()
         layout.addWidget(self._port_warning_label)
+        
+        layout.addSpacing(10)
+
+        # cloudflared manager
+        self._cloudflared = cloudflared
+        self._cloudflared.link_ready.connect(self._on_cloudflared_link)
+        self._cloudflared.stopped.connect(self._on_cloudflared_stopped)
+
+        # expose API via cloudflared
+        cloudflared_layout = QHBoxLayout()
+        if self._cloudflared.is_running():
+            _initial_btn_text = "Unexpose API to public"
+        elif self._cloudflared._connecting:
+            _initial_btn_text = "Cancel Exposal of API"
+        else:
+            _initial_btn_text = "Expose API to public"
+        self._expose_btn = QPushButton(_initial_btn_text)
+        self._expose_btn.setToolTip("tho it is not persistent, only use it to connect with external chatbots/discord bot hosted outside... do NOT send the link to anyone as they can access your queue")
+        self._expose_btn.clicked.connect(self._toggle_expose)
+        cloudflared_layout.addWidget(self._expose_btn)
+
+        self._cloudflared_link_label = QLabel()
+        self._cloudflared_link_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        cloudflared_layout.addWidget(self._cloudflared_link_label)
+
+        self._cloudflared_copy_btn = QPushButton("Copy link")
+        self._cloudflared_copy_btn.clicked.connect(self._copy_cloudflared_link)
+        cloudflared_layout.addWidget(self._cloudflared_copy_btn)
+
+        cloudflared_layout.addStretch()
+        layout.addLayout(cloudflared_layout)
+        self._cloudflared_patience_label = QLabel(
+            "This could (WILL) take some secondes depending on your internet/device/cloudflare servers, so please be patient or cancel."
+        )
+        self._cloudflared_patience_label.setWordWrap(True)
+        self._cloudflared_patience_label.setStyleSheet("color: #888; font-style: italic;")
+        layout.addWidget(self._cloudflared_patience_label)
+        self._cloudflared_patience_label.setVisible(self._cloudflared._connecting)
+        running = self._cloudflared.is_running()
+        self._cloudflared_link_label.setVisible(running)
+        self._cloudflared_copy_btn.setVisible(running)
+        if running and self._cloudflared._url:
+            self._cloudflared_link_label.setText(f"link: {self._cloudflared._url}")
 
         layout.addStretch()
         
@@ -532,6 +576,83 @@ class ApiTab(QWidget):
     def _on_host_network_toggled(self, checked):
         self._network_port_widget.setEnabled(checked)
         self._update_urls()
+
+    def _toggle_expose(self):
+        if self._cloudflared.is_running():
+            self._expose_btn.setText("Unexposing...")
+            self._expose_btn.setEnabled(False)
+            self._cloudflared_patience_label.hide()
+            self._cloudflared.stop()
+        elif self._cloudflared._connecting:
+            self._cloudflared._connecting = False
+            self._cloudflared_patience_label.hide()
+            self._expose_btn.setText("Expose API to public")
+            self._cloudflared.stop()
+        else:
+            if not CloudflaredManager.is_installed():
+                self._show_cloudflared_missing_dialog()
+                return
+
+            self._cloudflared._connecting = True
+            self._expose_btn.setText("Cancel Exposal of API")
+            self._cloudflared_patience_label.show()
+            self._cloudflared.start(self._local_port_spin.value())
+
+    def _show_cloudflared_missing_dialog(self):
+        msg = QMessageBox(self)
+        msg.setWindowTitle("Dependency Missing")
+        
+        if sys.platform == "win32":
+            msg.setText("This feature needs a dependency Cloudflare Tunnel which is not installed, please insatll it to continue using this")
+            dl_btn = msg.addButton("Download", QMessageBox.ButtonRole.ActionRole)
+            cancel_btn = msg.addButton("Cancel", QMessageBox.ButtonRole.RejectRole)
+            msg.exec()
+            if msg.clickedButton() == dl_btn:
+                QDesktopServices.openUrl(QUrl("https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.msi"))
+                
+        elif sys.platform == "darwin":
+            msg.setText("This feature needs a dependency Cloudflare Tunnel which is not installed, please insatll it to continue using this from brew or get the binary release")
+            copy_brew_btn = msg.addButton("copy Brew command", QMessageBox.ButtonRole.ActionRole)
+            dl_btn = msg.addButton("Download Binary", QMessageBox.ButtonRole.ActionRole)
+            cancel_btn = msg.addButton("Cancel", QMessageBox.ButtonRole.RejectRole)
+            msg.exec()
+            if msg.clickedButton() == copy_brew_btn:
+                QGuiApplication.clipboard().setText("brew install cloudflared")
+            elif msg.clickedButton() == dl_btn:
+                if platform.machine() == "arm64":
+                    url = "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-darwin-arm64.tgz"
+                else:
+                    url = "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-darwin-amd64.tgz"
+                QDesktopServices.openUrl(QUrl(url))
+                
+        else: # linux
+            msg.setText("This feature needs a dependency Cloudflare Tunnel which is not installed, please insatll it to continue using this using your distro's instructions")
+            how_btn = msg.addButton("How", QMessageBox.ButtonRole.ActionRole)
+            cancel_btn = msg.addButton("Cancel", QMessageBox.ButtonRole.RejectRole)
+            msg.exec()
+            if msg.clickedButton() == how_btn:
+                QDesktopServices.openUrl(QUrl("https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/downloads/#linux"))
+                
+    def _on_cloudflared_link(self, url: str):
+        self._cloudflared._connecting = False
+        self._expose_btn.setText("Unexpose API to public")
+        self._expose_btn.setEnabled(True)
+        self._cloudflared_patience_label.hide()
+        self._cloudflared_link_label.setText(f"link: {url}")
+        self._cloudflared_link_label.show()
+        self._cloudflared_copy_btn.show()
+
+    def _on_cloudflared_stopped(self):
+        self._cloudflared._connecting = False
+        self._expose_btn.setText("Expose API to public")
+        self._expose_btn.setEnabled(True)
+        self._cloudflared_patience_label.hide()
+        self._cloudflared_link_label.hide()
+        self._cloudflared_copy_btn.hide()
+        
+    def _copy_cloudflared_link(self):
+        text = self._cloudflared_link_label.text().replace("link: ", "")
+        QGuiApplication.clipboard().setText(text)
 
     def apply(self) -> bool:
         """Apply the API settings. Returns False (and leaves settings
@@ -688,7 +809,7 @@ class SettingsDialog(QDialog):
     twitch_logged_in = Signal(object)
     queue_command_changed = Signal(bool)
 
-    def __init__(self, queue: QueueManager, streamer_name: str, parent=None) -> None:
+    def __init__(self, queue: QueueManager, streamer_name: str, cloudflared, parent=None) -> None:
         super().__init__(parent)
         self._queue = queue
         self.setWindowTitle("Settings")
@@ -900,7 +1021,7 @@ class SettingsDialog(QDialog):
         youtube_layout.addStretch()
         tabs.addTab(youtube_tab, "YouTube")
 
-        self._api_tab = ApiTab(queue)
+        self._api_tab = ApiTab(queue, cloudflared)
         tabs.addTab(self._api_tab, "API")
 
         self._level_history_tab = LevelHistoryTab(queue)
