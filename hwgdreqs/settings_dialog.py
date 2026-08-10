@@ -422,6 +422,11 @@ class ApiTab(QWidget):
         
         layout.addWidget(QLabel("API Settings"))
         
+        warning_label = QLabel("This is by the way mainly used by the Geode mod integration, if you didnt understand shit about what this is, do NOT touch it, if you need to change for example the port, please assign it also to the geode mod settigs in game, this is used also for integrations...")
+        warning_label.setWordWrap(True)
+        layout.addWidget(warning_label)
+        layout.addSpacing(10)
+        
         # local API port
         local_port_layout = QHBoxLayout()
         local_port_layout.addWidget(QLabel("Local API port:"))

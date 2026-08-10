@@ -8,6 +8,7 @@ from urllib.parse import parse_qs, urlparse
 
 from hwgdreqs.queue_manager import QueueManager
 from hwgdreqs.twitch_auth import TwitchSession, get_channel_moderate_enabled, ban_twitch_user
+from hwgdreqs.config import asset_path
 
 
 def _make_handler(queue: QueueManager, session: TwitchSession | None = None, chat_callback=None):
@@ -64,7 +65,7 @@ def _make_handler(queue: QueueManager, session: TwitchSession | None = None, cha
 
             if path == "/swagger" or path == "/swagger/":
                 try:
-                    with open("assets/swagger/swagger.html", "rb") as f:
+                    with open(asset_path("swagger/swagger.html"), "rb") as f:
                         data = f.read()
                     self.send_response(200)
                     self.send_header("Content-Type", "text/html; charset=utf-8")
@@ -77,7 +78,7 @@ def _make_handler(queue: QueueManager, session: TwitchSession | None = None, cha
             if path in ("/openapi.json", "/swagger-ui.css", "/swagger-ui-bundle.js", "/swagger-ui-standalone-preset.js"):
                 import mimetypes
                 try:
-                    with open(f"assets/swagger{path}", "rb") as f:
+                    with open(asset_path(f"swagger{path}"), "rb") as f:
                         data = f.read()
                     mime, _ = mimetypes.guess_type(path)
                     self.send_response(200)
