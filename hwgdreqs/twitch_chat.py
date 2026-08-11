@@ -70,7 +70,7 @@ class TwitchChatWorker(QObject):
                 pass
 
     def _run(self) -> None:
-        channel = self._session.login.lower()
+        channel = (self._queue.twitch_bot_channel_name or self._session.login).lower()
         try:
             raw_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             raw_socket.settimeout(30)
@@ -148,7 +148,9 @@ class TwitchChatWorker(QObject):
 
             # see tags
             user_id = tags.get("user-id", "")
-            is_broadcaster = (username.lower() == self._session.login.lower()) or (user_id == self._session.user_id)
+            channel = (self._queue.twitch_bot_channel_name or self._session.login).lower()
+            # is_broadcaster checks if the chatter is the owner of the channel we are in
+            is_broadcaster = (username.lower() == channel) or (not self._queue.twitch_bot_channel_name and user_id == self._session.user_id)
             
             badges = tags.get("badges", "")
             is_mod = is_broadcaster or (tags.get("mod") == "1") or ("moderator/" in badges)
@@ -303,14 +305,15 @@ class TwitchChatWorker(QObject):
             return "[HwGDReqs] Queue is empty."
         parts = []
         for index, entry in enumerate(levels, start=1):
-            parts.append(f"{index}) {entry.name} from @{entry.requester}")
+            platform_tag = "" if entry.platform == "twitch" else f" ({'YT' if entry.platform == 'youtube' else entry.platform.upper()})"
+            parts.append(f"{index}) {entry.name} from @{entry.requester}{platform_tag}")
         text = "[HwGDReqs] " + " ".join(parts)
         if len(text) > 500:
             text = text[:497] + "..."
         return text
 
     def _send_chat_message(self, message: str) -> None:
-        channel = self._session.login.lower()
+        channel = (self._queue.twitch_bot_channel_name or self._session.login).lower()
         safe_message = message.replace("\r", " ").replace("\n", " ")
         sock = self._socket
         if sock is None:

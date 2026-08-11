@@ -81,6 +81,7 @@ class QueueData:
     twitch_subs_only: bool = False
     twitch_vip_only: bool = False
     twitch_followers_only: bool = False
+    twitch_bot_channel_name: str = ""
 
     youtube_members_only: bool = False
     youtube_superchats_only: bool = False
@@ -261,6 +262,18 @@ class QueueManager(QObject):
     def twitch_mod_priority(self, value: bool) -> None:
         with self._lock:
             self._data.twitch_mod_priority = value
+            self.save()
+        self._notify()
+
+    @property
+    def twitch_bot_channel_name(self) -> str:
+        with self._lock:
+            return self._data.twitch_bot_channel_name
+
+    @twitch_bot_channel_name.setter
+    def twitch_bot_channel_name(self, value: str) -> None:
+        with self._lock:
+            self._data.twitch_bot_channel_name = value
             self.save()
         self._notify()
 
@@ -550,6 +563,7 @@ class QueueManager(QObject):
             twitch_subs_only=bool(raw.get("twitch_subs_only", False)),
             twitch_vip_only=bool(raw.get("twitch_vip_only", False)),
             twitch_followers_only=bool(raw.get("twitch_followers_only", False)),
+            twitch_bot_channel_name=str(raw.get("twitch_bot_channel_name", "")),
             youtube_members_only=bool(raw.get("youtube_members_only", False)),
             youtube_superchats_only=bool(raw.get("youtube_superchats_only", False)),
             youtube_superchat_priority=bool(raw.get("youtube_superchat_priority", False)),
@@ -611,6 +625,7 @@ class QueueManager(QObject):
                 "twitch_subs_only": self._data.twitch_subs_only,
                 "twitch_vip_only": self._data.twitch_vip_only,
                 "twitch_followers_only": self._data.twitch_followers_only,
+                "twitch_bot_channel_name": self._data.twitch_bot_channel_name,
                 "youtube_members_only": self._data.youtube_members_only,
                 "youtube_superchats_only": self._data.youtube_superchats_only,
                 "youtube_superchat_priority": self._data.youtube_superchat_priority,

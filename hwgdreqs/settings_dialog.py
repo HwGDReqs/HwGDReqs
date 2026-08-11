@@ -926,6 +926,14 @@ class SettingsDialog(QDialog):
             self._has_chat_edit_scope = False
             self._has_channel_moderate_scope = False
 
+        # Bot channel
+        twitch_layout.addSpacing(15)
+        self._twitch_bot_channel_input = QLineEdit()
+        self._twitch_bot_channel_input.setPlaceholderText("See Requests from another twitch channel (username)")
+        self._twitch_bot_channel_input.setText(queue.twitch_bot_channel_name)
+        twitch_layout.addWidget(QLabel("Custom chat channel (leave empty for your own):"))
+        twitch_layout.addWidget(self._twitch_bot_channel_input)
+
         # prio + onli
         twitch_layout.addSpacing(15)
         priority_group_label = QLabel("Twitch Priorities & Restrictions:")
@@ -1060,6 +1068,19 @@ class SettingsDialog(QDialog):
         # open in that case instead of discarding the warning silently.
         if not self._api_tab.apply():
             return
+
+        bot_channel = self._twitch_bot_channel_input.text().strip()
+        if bot_channel and self._twitch_session:
+            from hwgdreqs.twitch_auth import check_twitch_user_exists
+            if not check_twitch_user_exists(self._twitch_session, bot_channel):
+                QMessageBox.warning(self, "Error", "Channel doesnt exist, recheck")
+                for i in range(self.tabs_stacked.count()):
+                    if self.tabs_stacked.widget(i) is self._twitch_bot_channel_input.parent():
+                        self._select_tab(i)
+                        break
+                return
+
+        self._queue.twitch_bot_channel_name = bot_channel
         self._queue.max_levels_per_requester = self._general_tab._max_levels_spinbox.value()
         self._queue.twitch_sub_priority = self._twitch_sub_priority_cb.isChecked()
         self._queue.twitch_vip_priority = self._twitch_vip_priority_cb.isChecked()

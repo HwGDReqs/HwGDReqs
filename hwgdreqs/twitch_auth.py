@@ -276,6 +276,25 @@ def complete_device_login(
     )
 
 
+def check_twitch_user_exists(session: TwitchSession, target_username: str) -> bool:
+    client_id = _require_client_id()
+    try:
+        response = requests.get(
+            TWITCH_USERS_URL,
+            headers={
+                "Authorization": f"Bearer {session.access_token}",
+                "Client-Id": client_id,
+            },
+            params={"login": target_username},
+            timeout=15,
+        )
+        if response.status_code == 200:
+            data = response.json().get("data", [])
+            return len(data) > 0
+    except Exception:
+        pass
+    return False
+
 def ban_twitch_user(session: TwitchSession, target_username: str) -> str | None:
     """
     Bans a Twitch user.
