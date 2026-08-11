@@ -60,6 +60,7 @@ class TwitchLoginDialog(QDialog):
         bot_note = QLabel(
             "If you want a custom bot account to chat in your main chat, "
             "Login with THAT account and do '/mod @your-bot-account' in your main chat"
+            "And set your streamer username in the settings under the twitch tab"
         )
         bot_note.setWordWrap(True)
         bot_note.setStyleSheet("color: #888; font-style: italic;")
