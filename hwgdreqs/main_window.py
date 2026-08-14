@@ -647,9 +647,9 @@ class MainWindow(QMainWindow):
             def _api_requests_chat_callback(enabled: bool) -> None:
                 if self._chat_worker and self._session and self._session.chat_edit_scope:
                     if enabled:
-                        self._chat_worker._send_chat_message(f"[HwGDReqs] @{self._session.login} has enabled requests, any level sent from now on will be added")
+                        self._chat_worker._maybe_send("requests_toggle", f"[HwGDReqs] @{self._session.login} has enabled requests, any level sent from now on will be added")
                     else:
-                        self._chat_worker._send_chat_message(f"[HwGDReqs] @{self._session.login} has disabled requests, any level sent from now on will not be added")
+                        self._chat_worker._maybe_send("requests_toggle", f"[HwGDReqs] @{self._session.login} has disabled requests, any level sent from now on will not be added")
             self._api_server.set_chat_callback(_api_requests_chat_callback)
         else:
             self._api_server.set_chat_callback(None)
@@ -1067,9 +1067,9 @@ class MainWindow(QMainWindow):
         self._toggle_requests_btn.setText("Disable requests" if self._queue.requests_enabled else "Enable requests")
         if self._chat_worker and self._session and self._session.chat_edit_scope:
             if self._queue.requests_enabled:
-                self._chat_worker._send_chat_message(f"[HwGDReqs] @{self._session.login} has enabled requests, any level sent from now on will be added")
+                self._chat_worker._maybe_send("requests_toggle", f"[HwGDReqs] @{self._session.login} has enabled requests, any level sent from now on will be added")
             else:
-                self._chat_worker._send_chat_message(f"[HwGDReqs] @{self._session.login} has disabled requests, any level sent from now on will not be added")
+                self._chat_worker._maybe_send("requests_toggle", f"[HwGDReqs] @{self._session.login} has disabled requests, any level sent from now on will not be added")
 
     def _open_settings(self) -> None:
         dialog = SettingsDialog(

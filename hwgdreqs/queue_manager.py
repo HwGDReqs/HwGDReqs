@@ -95,6 +95,10 @@ class QueueData:
     auto_blacklist_on_delete: bool = False
     auto_blacklist_unless_updated: bool = False
 
+    # bot reply toggles
+    twitch_bot_disabled_replies: list = field(default_factory=list)
+    twitch_bot_no_prefix: bool = False
+
 
 
 class QueueManager(QObject):
@@ -437,6 +441,33 @@ class QueueManager(QObject):
             self.save()
         self._notify()
 
+    @property
+    def twitch_bot_disabled_replies(self) -> list:
+        with self._lock:
+            return list(self._data.twitch_bot_disabled_replies)
+
+    @twitch_bot_disabled_replies.setter
+    def twitch_bot_disabled_replies(self, value: list) -> None:
+        with self._lock:
+            self._data.twitch_bot_disabled_replies = list(value)
+            self.save()
+
+    @property
+    def twitch_bot_no_prefix(self) -> bool:
+        with self._lock:
+            return self._data.twitch_bot_no_prefix
+
+    @twitch_bot_no_prefix.setter
+    def twitch_bot_no_prefix(self, value: bool) -> None:
+        with self._lock:
+            self._data.twitch_bot_no_prefix = bool(value)
+            self.save()
+
+    def is_reply_enabled(self, key: str) -> bool:
+        """Return True if the bot is allowed to send this reply type."""
+        with self._lock:
+            return key not in self._data.twitch_bot_disabled_replies
+
 
     def is_on_cooldown(self, requester: str) -> bool:
         with self._lock:
@@ -574,6 +605,8 @@ class QueueManager(QObject):
             requests_enabled=bool(raw.get("requests_enabled", True)),
             auto_blacklist_on_delete=bool(raw.get("auto_blacklist_on_delete", False)),
             auto_blacklist_unless_updated=bool(raw.get("auto_blacklist_unless_updated", False)),
+            twitch_bot_disabled_replies=list(raw.get("twitch_bot_disabled_replies", [])),
+            twitch_bot_no_prefix=bool(raw.get("twitch_bot_no_prefix", False)),
         )
 
         # Populate missing timestamps
@@ -636,6 +669,8 @@ class QueueManager(QObject):
                 "requests_enabled": self._data.requests_enabled,
                 "auto_blacklist_on_delete": self._data.auto_blacklist_on_delete,
                 "auto_blacklist_unless_updated": self._data.auto_blacklist_unless_updated,
+                "twitch_bot_disabled_replies": self._data.twitch_bot_disabled_replies,
+                "twitch_bot_no_prefix": self._data.twitch_bot_no_prefix,
             }
 
             target_path = queue_file()
@@ -756,10 +791,14 @@ class QueueManager(QObject):
                 accepted = False
             if accepted and any(entry.id == level_id for entry in self._data.levels):
                 accepted = False
-            if accepted and not self._data.allow_any_level:
-                if difficulty not in self._data.allowed_difficulties:
+                
+            is_placeholder = name.startswith("⚠️")
+            bypass_filters = is_placeholder and self._data.allow_any_level
+            
+            if accepted and not bypass_filters:
+                if self._data.allowed_difficulties and difficulty not in self._data.allowed_difficulties:
                     accepted = False
-                elif length and length not in self._data.allowed_lengths:
+                elif self._data.allowed_lengths and length and length not in self._data.allowed_lengths:
                     accepted = False
                 elif self._data.no_disliked and disliked:
                     accepted = False

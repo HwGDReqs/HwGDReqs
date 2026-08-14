@@ -2,7 +2,7 @@
   "openapi": "3.0.0",
   "info": {
     "title": "HwGDReqs API",
-    "version": "1.1.0",
+    "version": "1.2.0",
     "description": "API for interacting with the Geometry Dash Request Queue"
   },
   "paths": {
@@ -21,7 +21,28 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "levels": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "aredl_position": {
+                            "type": "integer",
+                            "description": "The rank of the level on the AREDL (if applicable)"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       },
@@ -49,7 +70,25 @@
         "summary": "Get the current level",
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "level": {
+                      "type": "object",
+                      "properties": {
+                        "aredl_position": {
+                          "type": "integer",
+                          "description": "The rank of the level on the AREDL (if applicable)"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }

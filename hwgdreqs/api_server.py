@@ -11,6 +11,23 @@ from hwgdreqs.twitch_auth import TwitchSession, get_channel_moderate_enabled, ba
 from hwgdreqs.config import asset_path
 
 
+import urllib.request
+
+_aredl_cache = None
+
+def get_aredl_position(level_id):
+    global _aredl_cache
+    if _aredl_cache is None:
+        try:
+            req = urllib.request.Request("https://api.aredl.net/v2/api/aredl/levels")
+            req.add_header('User-Agent', 'Mozilla/5.0')
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                data = json.loads(resp.read())
+                _aredl_cache = {str(item.get("level_id")): item.get("position") for item in data}
+        except Exception:
+            _aredl_cache = {}
+    return _aredl_cache.get(str(level_id))
+
 def _make_handler(queue: QueueManager, session: TwitchSession | None = None, chat_callback=None):
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, format: str, *args) -> None:
@@ -106,7 +123,9 @@ def _make_handler(queue: QueueManager, session: TwitchSession | None = None, cha
                 matches = []
                 for e in queue.levels:
                     if q in e.name.lower() or q in str(e.id).lower() or q in e.author.lower() or q in e.requester.lower():
-                        matches.append(asdict(e))
+                        d = asdict(e)
+                        d["aredl_position"] = get_aredl_position(d["id"])
+                        matches.append(d)
                 self._send_json({"levels": matches})
                 return
 
@@ -117,17 +136,29 @@ def _make_handler(queue: QueueManager, session: TwitchSession | None = None, cha
                         row = int(params["row"])
                         levels = queue.levels
                         if row >= 0 and row < len(levels):
-                            self._send_json({"level": asdict(levels[row])})
+                            d = asdict(levels[row])
+                            d["aredl_position"] = get_aredl_position(d["id"])
+                            self._send_json({"level": d})
                         else:
                             self._send_json({"ok": False, "error": "invalid_row"}, status=400)
                     except ValueError:
                         self._send_json({"ok": False, "error": "invalid_row"}, status=400)
                 else:
-                    self._send_json({"levels": [asdict(e) for e in queue.levels]})
+                    arr = []
+                    for e in queue.levels:
+                        d = asdict(e)
+                        d["aredl_position"] = get_aredl_position(d["id"])
+                        arr.append(d)
+                    self._send_json({"levels": arr})
                 return
             if path == "/current":
                 levels = queue.levels
-                self._send_json({"level": asdict(levels[0]) if levels else None})
+                if levels:
+                    d = asdict(levels[0])
+                    d["aredl_position"] = get_aredl_position(d["id"])
+                    self._send_json({"level": d})
+                else:
+                    self._send_json({"level": None})
                 return
 
             if path == "/requests-state":

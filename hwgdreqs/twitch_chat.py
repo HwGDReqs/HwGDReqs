@@ -211,7 +211,8 @@ class TwitchChatWorker(QObject):
         if level_ids:
             if self._queue.is_on_cooldown(requester):
                 remaining = self._queue.get_remaining_cooldown(requester)
-                self._send_chat_message(
+                self._maybe_send(
+                    "cooldown",
                     f"[HwGDReqs] @{requester}, you're on cooldown for {remaining} more second{'s' if remaining != 1 else ''}."
                 )
                 return
@@ -270,35 +271,6 @@ class TwitchChatWorker(QObject):
         
         return False
 
-    def _queue_command(self) -> None:
-        message = self._format_queue_message()
-        self._send_chat_message(message)
-
-    def _whereami_command(self, requester: str) -> None:
-        levels = self._queue.levels
-        requester_lower = requester.lower()
-        
-        matching_indices = []
-        for index, entry in enumerate(levels):
-            if entry.requester.lower() == requester_lower:
-                matching_indices.append((index, entry))
-                
-        if not matching_indices:
-            self._send_chat_message("[HwGDReqs] you don't have any levels in the queue.")
-            return
-            
-        first_index, first_entry = matching_indices[0]
-        pos = first_index + 1
-        name = first_entry.name
-        
-        if len(matching_indices) > 1:
-            more_count = len(matching_indices) - 1
-            msg = f"[HwGDReqs] you're in position {pos} with your level '{name}' and {more_count} more"
-        else:
-            msg = f"[HwGDReqs] you're in position {pos} with your level '{name}'"
-            
-        self._send_chat_message(msg)
-
     def _format_queue_message(self) -> str:
         levels = self._queue.levels
         if not levels:
@@ -312,9 +284,46 @@ class TwitchChatWorker(QObject):
             text = text[:497] + "..."
         return text
 
+    def _queue_command(self) -> None:
+        levels = self._queue.levels
+        if not levels:
+            self._maybe_send("queue_empty", "[HwGDReqs] Queue is empty.")
+        else:
+            self._maybe_send("queue_list", self._format_queue_message())
+
+    def _whereami_command(self, requester: str) -> None:
+        levels = self._queue.levels
+        requester_lower = requester.lower()
+        
+        matching_indices = []
+        for index, entry in enumerate(levels):
+            if entry.requester.lower() == requester_lower:
+                matching_indices.append((index, entry))
+                
+        if not matching_indices:
+            self._maybe_send("whereami_empty", "[HwGDReqs] you don't have any levels in the queue.")
+            return
+            
+        first_index, first_entry = matching_indices[0]
+        pos = first_index + 1
+        name = first_entry.name
+        
+        if len(matching_indices) > 1:
+            more_count = len(matching_indices) - 1
+            msg = f"[HwGDReqs] you're in position {pos} with your level '{name}' and {more_count} more"
+        else:
+            msg = f"[HwGDReqs] you're in position {pos} with your level '{name}'"
+            
+        self._maybe_send("whereami_pos", msg)
+
+
+
     def _send_chat_message(self, message: str) -> None:
         channel = (self._queue.twitch_bot_channel_name or self._session.login).lower()
         safe_message = message.replace("\r", " ").replace("\n", " ")
+        # strip [HwGDReqs] prefix if the user wants that
+        if self._queue.twitch_bot_no_prefix:
+            safe_message = safe_message.replace("[HwGDReqs] ", "").replace("[HwGDReqs]", "")
         sock = self._socket
         if sock is None:
             return
@@ -324,6 +333,10 @@ class TwitchChatWorker(QObject):
             )
         except OSError:
             pass
+
+    def _maybe_send(self, reply_key: str, message: str) -> None:
+        if self._queue.is_reply_enabled(reply_key):
+            self._send_chat_message(message)
 
     def _delete_level_command(self, requester: str, level_id: str) -> None:
 
@@ -338,7 +351,8 @@ class TwitchChatWorker(QObject):
                 return
         if not found:
             logger.warning(f"Level {level_id} not found or not requested by {requester}")
-            self._send_chat_message(
+            self._maybe_send(
+                "del_not_found",
                 f"[HwGDReqs] @{requester}, Level not found or you didn't request it"
             )
 
@@ -356,7 +370,8 @@ class TwitchChatWorker(QObject):
         if old_index is None:
             logger.warning(f"Level {old_level_id} not found in queue for {requester}")
             self.status_changed.emit(f"Level {old_level_id} not found in queue for {requester}")
-            self._send_chat_message(
+            self._maybe_send(
+                "replace_not_found",
                 f"[HwGDReqs] @{requester}, Level not found or you didn't request it"
             )
             return
@@ -398,6 +413,14 @@ class TwitchChatWorker(QObject):
         self.status_changed.emit(f"Replaced level {old_level_id} with {new_level_id} for {requester}")
 
     def _enqueue_level(self, requester: str, level_id: str, message: str, priority: bool = False) -> bool:
+        if any(e.id == level_id for e in self._queue.levels):
+            self._maybe_send("already_in_queue", f"[HwGDReqs] @{requester} your level \"{level_id}\" is already in the queue.")
+            return False
+            
+        if self._queue.max_levels_per_requester > 0 and self._queue.get_requester_level_count(requester) >= self._queue.max_levels_per_requester:
+            self._maybe_send("max_levels", f"[HwGDReqs] @{requester} you have reached the maximum number of levels you can request.")
+            return False
+
         try:
             data = fetch_level_normalized(level_id)
         except LevelFetchTimeoutError:
@@ -406,6 +429,7 @@ class TwitchChatWorker(QObject):
             logger.warning(f"Level ID {level_id} not found on Geometry Dash servers")
             if not self._queue.allow_any_level:
                 self.status_changed.emit(f"Level ID {level_id} not found on Geometry Dash servers")
+                self._maybe_send("not_found_gd", f"[HwGDReqs] @{requester} level \"{level_id}\" was not found on Geometry Dash servers")
                 return False
             return self._enqueue_placeholder(
                 requester, level_id, message, priority,
@@ -435,6 +459,19 @@ class TwitchChatWorker(QObject):
         )
         if added:
             self.status_changed.emit(f"Queued: '{data.get('name')}' by '{data.get('author')}' from '{requester}'")
+            spot = len(self._queue.levels)
+            for i, entry in enumerate(self._queue.levels):
+                if entry.id == level_id and entry.requester == requester:
+                    spot = i + 1
+                    break
+            self._maybe_send("added_to_queue", f"[HwGDReqs] @{requester} your level \"{data.get('name', 'Unknown')}\" by \"{data.get('author', 'Unknown')}\" got added to the queue in #{spot} spot")
+        else:
+            if not self._queue.requests_enabled:
+                pass
+            elif requester.lower() in [r.lower() for r in self._queue.blacklist_requesters]:
+                pass
+            else:
+                self._maybe_send("filtered_out", f"[HwGDReqs] @{requester} your level \"{level_id}\" could not be added because of Filters")
         return added
 
     def _enqueue_placeholder(self, requester: str, level_id: str, message: str, priority: bool, reason: str, status_text: str | None = None) -> bool:
@@ -445,6 +482,7 @@ class TwitchChatWorker(QObject):
         """
         if not self._queue.allow_any_level:
             logger.warning(f"Failed to fetch level {level_id} ({reason})")
+            self._send_chat_message(f"[HwGDReqs] @{requester} your level \"{level_id}\" could not be added because of Filters")
             return False
         placeholder = placeholder_level_data(level_id)
         added = self._queue.add_level(
@@ -466,5 +504,18 @@ class TwitchChatWorker(QObject):
         )
         if added:
             self.status_changed.emit(status_text or f"Failed to fetch level ({reason}), so added bare ID")
+            spot = len(self._queue.levels)
+            for i, entry in enumerate(self._queue.levels):
+                if entry.id == level_id and entry.requester == requester:
+                    spot = i + 1
+                    break
+            self._maybe_send("placeholder_added", f"[HwGDReqs] @{requester} your level \"{level_id}\" didnt find the assets, but added anyways to #{spot} spot")
+        else:
+            if not self._queue.requests_enabled:
+                pass
+            elif requester.lower() in [r.lower() for r in self._queue.blacklist_requesters]:
+                pass
+            else:
+                self._maybe_send("filtered_out", f"[HwGDReqs] @{requester} your level \"{level_id}\" could not be added because of Filters")
         return added
 

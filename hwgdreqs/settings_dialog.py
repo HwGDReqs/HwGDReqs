@@ -872,7 +872,15 @@ class SettingsDialog(QDialog):
         tabs.addTab(self._commands_tab, "Commands")
 
         twitch_tab = QWidget()
-        twitch_layout = QVBoxLayout(twitch_tab)
+        twitch_tab_outer_layout = QVBoxLayout(twitch_tab)
+        twitch_tab_outer_layout.setContentsMargins(0, 0, 0, 0)
+        twitch_scroll = QScrollArea()
+        twitch_scroll.setWidgetResizable(True)
+        twitch_scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        twitch_inner = QWidget()
+        twitch_layout = QVBoxLayout(twitch_inner)
+        twitch_scroll.setWidget(twitch_inner)
+        twitch_tab_outer_layout.addWidget(twitch_scroll)
         twitch_layout.addWidget(QLabel(f"Data folder:\n{data_dir()}"))
 
         self._twitch_session = load_session()
@@ -966,8 +974,55 @@ class SettingsDialog(QDialog):
         self._twitch_followers_only_cb.setChecked(queue.twitch_followers_only)
         twitch_layout.addWidget(self._twitch_followers_only_cb)
 
+        from PySide6.QtWidgets import QFrame
+        twitch_layout.addSpacing(15)
+        sep_line = QFrame()
+        sep_line.setFrameShape(QFrame.Shape.HLine)
+        sep_line.setFrameShadow(QFrame.Shadow.Sunken)
+        twitch_layout.addWidget(sep_line)
+
+        bot_replies_label = QLabel("Things that the bot is allowed to say:")
+        bot_replies_font = bot_replies_label.font()
+        bot_replies_font.setBold(True)
+        bot_replies_label.setFont(bot_replies_font)
+        twitch_layout.addWidget(bot_replies_label)
+
+        disabled_replies = queue.twitch_bot_disabled_replies
+
+        self._bot_reply_toggles: list[tuple[str, QCheckBox]] = []
+        bot_reply_definitions = [
+            ("added_to_queue", "\"Your level got added to the queue in #N spot\"", "Sent when a level is successfully queued"),
+            ("already_in_queue", "\"Your level is already in the queue\"", "Sent when the same level is submitted twice"),
+            ("cooldown", "\"You're on cooldown\"", "Sent when a requester submits while on cooldown"),
+            ("max_levels", "\"You have reached the maximum number of levels\"", "Sent when the per-requester limit is hit"),
+            ("not_found_gd", "\"Level was not found on Geometry Dash servers\"", "Sent when the level ID doesn't exist on GD"),
+            ("filtered_out", "\"Your level could not be added because of Filters\"", "Sent when a level is rejected by the active filters"),
+            ("placeholder_added", "\"Level didn't find assets, but added anyways\"", "Sent when a level is added as a bare-ID placeholder"),
+            ("del_not_found", "\"Level not found or you didn't request it\" (for !del)\"", "Sent when !del fails to find the level"),
+            ("replace_not_found", "\"Level not found or you didn't request it\" (for !replace)", "Sent when !replace fails to find the old level"),
+            ("queue_empty", "\"Queue is empty\" (for !queue)", "Sent when !queue is used and the queue is empty"),
+            ("queue_list", "\"[queue list]\" (for !queue)", "Sends the full queue list when !queue is used"),
+            ("whereami_empty", "\"You don't have any levels in the queue\" (for !whereami)", "Sent when !whereami finds no levels"),
+            ("whereami_pos", "\"You're in position N\" (for !whereami)", "Sent with the requester's queue position"),
+            ("requests_toggle", "\"Requests enabled/disabled\" announcement", "Sent when you enable or disable requests"),
+        ]
+
+        for key, label_text, tooltip in bot_reply_definitions:
+            cb = QCheckBox(label_text)
+            cb.setChecked(key not in disabled_replies)
+            cb.setToolTip(tooltip)
+            twitch_layout.addWidget(cb)
+            self._bot_reply_toggles.append((key, cb))
+
+        twitch_layout.addSpacing(8)
+        self._twitch_bot_no_prefix_cb = QCheckBox("Remove the [HwGDReqs] prefix from bot messages")
+        self._twitch_bot_no_prefix_cb.setChecked(queue.twitch_bot_no_prefix)
+        self._twitch_bot_no_prefix_cb.setToolTip("When enabled, bot messages will not start with [HwGDReqs]")
+        twitch_layout.addWidget(self._twitch_bot_no_prefix_cb)
+
         twitch_layout.addStretch()
         tabs.addTab(twitch_tab, "Twitch")
+
 
         youtube_tab = QWidget()
         youtube_layout = QVBoxLayout(youtube_tab)
@@ -1092,6 +1147,11 @@ class SettingsDialog(QDialog):
         self._queue.youtube_superchat_priority = self._youtube_superchat_priority_cb.isChecked()
         self._queue.youtube_members_only = self._youtube_members_only_cb.isChecked()
         self._queue.youtube_superchats_only = self._youtube_superchats_only_cb.isChecked()
+
+        disabled_replies = [key for key, cb in self._bot_reply_toggles if not cb.isChecked()]
+        self._queue.twitch_bot_disabled_replies = disabled_replies
+        self._queue.twitch_bot_no_prefix = self._twitch_bot_no_prefix_cb.isChecked()
+
         self.accept()
 
     def _select_tab(self, index: int) -> None:
