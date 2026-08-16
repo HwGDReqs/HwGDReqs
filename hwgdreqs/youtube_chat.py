@@ -90,13 +90,13 @@ class YoutubeChatWorker(QObject):
 
         command = parts[0].lower()
 
-        if command == "!del" and len(parts) >= 2:
+        if command == self._queue.command_del.lower() and len(parts) >= 2:
             level_id = parts[1].replace(",", "")
             logger.info(f"!del command from {requester}: level_id={level_id}")
             self._delete_level_command(requester, level_id)
             return True
 
-        if command == "!replace" and len(parts) >= 3:
+        if command == self._queue.command_replace.lower() and len(parts) >= 3:
             old_level_id = parts[1].replace(",", "")
             new_level_id = parts[2].replace(",", "")
             logger.info(

@@ -82,6 +82,10 @@ class QueueData:
     twitch_vip_only: bool = False
     twitch_followers_only: bool = False
     twitch_bot_channel_name: str = ""
+    twitch_reward_id: str = ""
+    twitch_reward_name: str = ""
+    twitch_reward_only: bool = False
+    twitch_reward_priority: bool = False
 
     youtube_members_only: bool = False
     youtube_superchats_only: bool = False
@@ -98,6 +102,13 @@ class QueueData:
     # bot reply toggles
     twitch_bot_disabled_replies: list = field(default_factory=list)
     twitch_bot_no_prefix: bool = False
+
+    # custom commands
+    command_del: str = "!del"
+    command_replace: str = "!replace"
+    command_queue: str = "!queue"
+    command_whereami: str = "!whereami"
+    command_commands: str = "!commands"
 
 
 
@@ -314,7 +325,55 @@ class QueueManager(QObject):
     def twitch_followers_only(self, value: bool) -> None:
         with self._lock:
             self._data.twitch_followers_only = value
-            self.save()
+        self.save()
+        self._notify()
+
+    @property
+    def twitch_reward_id(self) -> str:
+        with self._lock:
+            return self._data.twitch_reward_id
+
+    @twitch_reward_id.setter
+    def twitch_reward_id(self, value: str) -> None:
+        with self._lock:
+            self._data.twitch_reward_id = value
+        self.save()
+        self._notify()
+
+    @property
+    def twitch_reward_name(self) -> str:
+        with self._lock:
+            return self._data.twitch_reward_name
+
+    @twitch_reward_name.setter
+    def twitch_reward_name(self, value: str) -> None:
+        with self._lock:
+            self._data.twitch_reward_name = value
+        self.save()
+        self._notify()
+
+    @property
+    def twitch_reward_only(self) -> bool:
+        with self._lock:
+            return self._data.twitch_reward_only
+
+    @twitch_reward_only.setter
+    def twitch_reward_only(self, value: bool) -> None:
+        with self._lock:
+            self._data.twitch_reward_only = value
+        self.save()
+        self._notify()
+
+    @property
+    def twitch_reward_priority(self) -> bool:
+        with self._lock:
+            return self._data.twitch_reward_priority
+
+    @twitch_reward_priority.setter
+    def twitch_reward_priority(self, value: bool) -> None:
+        with self._lock:
+            self._data.twitch_reward_priority = value
+        self.save()
         self._notify()
 
     @property
@@ -468,6 +527,62 @@ class QueueManager(QObject):
         with self._lock:
             return key not in self._data.twitch_bot_disabled_replies
 
+    @property
+    def command_del(self) -> str:
+        with self._lock:
+            return self._data.command_del
+
+    @command_del.setter
+    def command_del(self, value: str) -> None:
+        with self._lock:
+            self._data.command_del = value
+            self.save()
+
+    @property
+    def command_replace(self) -> str:
+        with self._lock:
+            return self._data.command_replace
+
+    @command_replace.setter
+    def command_replace(self, value: str) -> None:
+        with self._lock:
+            self._data.command_replace = value
+            self.save()
+
+    @property
+    def command_queue(self) -> str:
+        with self._lock:
+            return self._data.command_queue
+
+    @command_queue.setter
+    def command_queue(self, value: str) -> None:
+        with self._lock:
+            self._data.command_queue = value
+            self.save()
+
+    @property
+    def command_whereami(self) -> str:
+        with self._lock:
+            return self._data.command_whereami
+
+    @command_whereami.setter
+    def command_whereami(self, value: str) -> None:
+        with self._lock:
+            self._data.command_whereami = value
+            self.save()
+
+    @property
+    def command_commands(self) -> str:
+        with self._lock:
+            return self._data.command_commands
+
+    @command_commands.setter
+    def command_commands(self, value: str) -> None:
+        with self._lock:
+            self._data.command_commands = value
+            self.save()
+
+
 
     def is_on_cooldown(self, requester: str) -> bool:
         with self._lock:
@@ -595,6 +710,10 @@ class QueueManager(QObject):
             twitch_vip_only=bool(raw.get("twitch_vip_only", False)),
             twitch_followers_only=bool(raw.get("twitch_followers_only", False)),
             twitch_bot_channel_name=str(raw.get("twitch_bot_channel_name", "")),
+            twitch_reward_id=str(raw.get("twitch_reward_id", "")),
+            twitch_reward_name=str(raw.get("twitch_reward_name", "")),
+            twitch_reward_only=bool(raw.get("twitch_reward_only", False)),
+            twitch_reward_priority=bool(raw.get("twitch_reward_priority", False)),
             youtube_members_only=bool(raw.get("youtube_members_only", False)),
             youtube_superchats_only=bool(raw.get("youtube_superchats_only", False)),
             youtube_superchat_priority=bool(raw.get("youtube_superchat_priority", False)),
@@ -607,6 +726,11 @@ class QueueManager(QObject):
             auto_blacklist_unless_updated=bool(raw.get("auto_blacklist_unless_updated", False)),
             twitch_bot_disabled_replies=list(raw.get("twitch_bot_disabled_replies", [])),
             twitch_bot_no_prefix=bool(raw.get("twitch_bot_no_prefix", False)),
+            command_del=str(raw.get("command_del", "!del")),
+            command_replace=str(raw.get("command_replace", "!replace")),
+            command_queue=str(raw.get("command_queue", "!queue")),
+            command_whereami=str(raw.get("command_whereami", "!whereami")),
+            command_commands=str(raw.get("command_commands", "!commands")),
         )
 
         # Populate missing timestamps
@@ -659,6 +783,10 @@ class QueueManager(QObject):
                 "twitch_vip_only": self._data.twitch_vip_only,
                 "twitch_followers_only": self._data.twitch_followers_only,
                 "twitch_bot_channel_name": self._data.twitch_bot_channel_name,
+                "twitch_reward_id": self._data.twitch_reward_id,
+                "twitch_reward_name": self._data.twitch_reward_name,
+                "twitch_reward_only": self._data.twitch_reward_only,
+                "twitch_reward_priority": self._data.twitch_reward_priority,
                 "youtube_members_only": self._data.youtube_members_only,
                 "youtube_superchats_only": self._data.youtube_superchats_only,
                 "youtube_superchat_priority": self._data.youtube_superchat_priority,
@@ -671,6 +799,11 @@ class QueueManager(QObject):
                 "auto_blacklist_unless_updated": self._data.auto_blacklist_unless_updated,
                 "twitch_bot_disabled_replies": self._data.twitch_bot_disabled_replies,
                 "twitch_bot_no_prefix": self._data.twitch_bot_no_prefix,
+                "command_del": self._data.command_del,
+                "command_replace": self._data.command_replace,
+                "command_queue": self._data.command_queue,
+                "command_whereami": self._data.command_whereami,
+                "command_commands": self._data.command_commands,
             }
 
             target_path = queue_file()

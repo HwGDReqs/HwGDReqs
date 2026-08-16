@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
     QProgressDialog,
     QApplication,
     QSlider,
+    QComboBox,
 )
 
 from hwgdreqs.config import clear_auth, data_dir, asset_path, exec_dir, APP_VERSION
@@ -230,9 +231,52 @@ class GeneralTab(QWidget):
         self._queue.queue_popout_scale = self._popout_scale_slider.value() / 100.0
 
 
-class CommandsTab(QWidget):
-    def __init__(self, parent=None, *, show_queue_command: bool = False) -> None:
+class EditableCommandLabel(QWidget):
+    def __init__(self, initial_text, on_changed_callback, parent=None):
         super().__init__(parent)
+        self.on_changed = on_changed_callback
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        self.label = QLabel(initial_text)
+        self.label.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.label.setToolTip("Click to edit command")
+        font = self.label.font()
+        font.setBold(True)
+        self.label.setFont(font)
+        
+        self.edit = QLineEdit(initial_text)
+        self.edit.setFont(font)
+        self.edit.hide()
+        
+        layout.addWidget(self.label)
+        layout.addWidget(self.edit)
+        layout.addStretch()
+        
+        self.label.mousePressEvent = self._start_editing
+        self.edit.editingFinished.connect(self._finish_editing)
+        
+    def _start_editing(self, event):
+        self.label.hide()
+        self.edit.show()
+        self.edit.setFocus()
+        
+    def _finish_editing(self):
+        new_text = self.edit.text().strip()
+        if not new_text:
+            new_text = self.label.text()
+            self.edit.setText(new_text)
+        elif new_text != self.label.text():
+            self.label.setText(new_text)
+            self.on_changed(new_text)
+            
+        self.edit.hide()
+        self.label.show()
+
+class CommandsTab(QWidget):
+    def __init__(self, queue: QueueManager, parent=None, *, show_queue_command: bool = False) -> None:
+        super().__init__(parent)
+        self._queue = queue
+        self.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
         
         layout = QVBoxLayout(self)
         
@@ -242,26 +286,28 @@ class CommandsTab(QWidget):
         title_font.setPointSize(11)
         title.setFont(title_font)
         layout.addWidget(title)
+        
+        hint = QLabel("(Click on a command to edit it)")
+        hint.setStyleSheet("color: gray;")
+        layout.addWidget(hint)
         layout.addSpacing(10)
         
         commands = [
-            ("!del <id>", "Delete a level from the queue. Only works for the user who requested it."),
-            ("!replace <id> <new-id>", "Replace a level in the queue with a new one. Only works for the user who requested it. Maintains the position in queue btw"),
+            (queue.command_del, "Delete a level from the queue. Only works for the user who requested it.", self._set_cmd_del),
+            (queue.command_replace, "Replace a level in the queue with a new one. Only works for the user who requested it. Maintains the position in queue btw", self._set_cmd_replace),
+            (queue.command_commands, "Reply with the available commands", self._set_cmd_commands),
         ]
         if show_queue_command:
             commands.append(
-                ("!queue", "Sends as you the queue contents to the chat (TWITCH ONLY)"),
+                (queue.command_queue, "Sends as you the queue contents to the chat (TWITCH ONLY)", self._set_cmd_queue),
             )
             commands.append(
-                ("!whereami", "Replies with your current position in the queue and details about your levels (TWITCH ONLY)"),
+                (queue.command_whereami, "Replies with your current position in the queue and details about your levels (TWITCH ONLY)", self._set_cmd_whereami),
             )
         
-        for command, description in commands:
-            cmd_label = QLabel(command)
-            cmd_font = cmd_label.font()
-            cmd_font.setBold(True)
-            cmd_label.setFont(cmd_font)
-            layout.addWidget(cmd_label)
+        for command, description, callback in commands:
+            cmd_widget = EditableCommandLabel(command, callback)
+            layout.addWidget(cmd_widget)
             
             desc_label = QLabel(description)
             desc_label.setWordWrap(True)
@@ -269,6 +315,26 @@ class CommandsTab(QWidget):
             layout.addSpacing(10)
         
         layout.addStretch()
+
+    def mousePressEvent(self, event):
+        self.setFocus()
+        super().mousePressEvent(event)
+
+    def _set_cmd_del(self, text):
+        self._queue.command_del = text
+
+    def _set_cmd_replace(self, text):
+        self._queue.command_replace = text
+
+    def _set_cmd_commands(self, text):
+        self._queue.command_commands = text
+
+    def _set_cmd_queue(self, text):
+        self._queue.command_queue = text
+
+    def _set_cmd_whereami(self, text):
+        self._queue.command_whereami = text
+
 
 
 class KeybindsTab(QWidget):
@@ -868,7 +934,7 @@ class SettingsDialog(QDialog):
         self._filters_tab = FiltersTab(queue)
         tabs.addTab(self._filters_tab, "Filters")
         
-        self._commands_tab = CommandsTab(show_queue_command=has_chat_edit_scope())
+        self._commands_tab = CommandsTab(self._queue, show_queue_command=has_chat_edit_scope())
         tabs.addTab(self._commands_tab, "Commands")
 
         twitch_tab = QWidget()
@@ -1020,6 +1086,41 @@ class SettingsDialog(QDialog):
         self._twitch_bot_no_prefix_cb.setToolTip("When enabled, bot messages will not start with [HwGDReqs]")
         twitch_layout.addWidget(self._twitch_bot_no_prefix_cb)
 
+        twitch_layout.addSpacing(15)
+        sep_line_rewards = QFrame()
+        sep_line_rewards.setFrameShape(QFrame.Shape.HLine)
+        sep_line_rewards.setFrameShadow(QFrame.Shadow.Sunken)
+        twitch_layout.addWidget(sep_line_rewards)
+
+        # custom rewards
+        twitch_layout.addSpacing(15)
+        rewards_group_label = QLabel("Twitch Custom Rewards:")
+        rewards_group_font = rewards_group_label.font()
+        rewards_group_font.setBold(True)
+        rewards_group_label.setFont(rewards_group_font)
+        twitch_layout.addWidget(rewards_group_label)
+
+        rewards_row = QHBoxLayout()
+        self._fetch_rewards_btn = QPushButton("Fetch Custom Rewards")
+        self._fetch_rewards_btn.clicked.connect(self._on_fetch_custom_rewards_clicked)
+        rewards_row.addWidget(self._fetch_rewards_btn)
+
+        self._twitch_rewards_combo = QComboBox()
+        self._twitch_rewards_combo.addItem("None", "")
+        if queue.twitch_reward_name:
+            self._twitch_rewards_combo.addItem(queue.twitch_reward_name, queue.twitch_reward_id)
+            self._twitch_rewards_combo.setCurrentIndex(1)
+        rewards_row.addWidget(self._twitch_rewards_combo)
+        twitch_layout.addLayout(rewards_row)
+
+        self._twitch_reward_only_cb = QCheckBox("By reward redemption only")
+        self._twitch_reward_only_cb.setChecked(queue.twitch_reward_only)
+        twitch_layout.addWidget(self._twitch_reward_only_cb)
+
+        self._twitch_reward_priority_cb = QCheckBox("By reward redemption priority")
+        self._twitch_reward_priority_cb.setChecked(queue.twitch_reward_priority)
+        twitch_layout.addWidget(self._twitch_reward_priority_cb)
+
         twitch_layout.addStretch()
         tabs.addTab(twitch_tab, "Twitch")
 
@@ -1143,6 +1244,203 @@ class SettingsDialog(QDialog):
         self._queue.twitch_subs_only = self._twitch_subs_only_cb.isChecked()
         self._queue.twitch_vip_only = self._twitch_vip_only_cb.isChecked()
         self._queue.twitch_followers_only = self._twitch_followers_only_cb.isChecked()
+        
+        self._queue.twitch_reward_id = self._twitch_rewards_combo.currentData()
+        self._queue.twitch_reward_name = self._twitch_rewards_combo.currentText()
+        self._queue.twitch_reward_only = self._twitch_reward_only_cb.isChecked()
+        self._queue.twitch_reward_priority = self._twitch_reward_priority_cb.isChecked()
+
+        self._queue.youtube_member_priority = self._youtube_member_priority_cb.isChecked()
+        self._queue.youtube_superchat_priority = self._youtube_superchat_priority_cb.isChecked()
+        self._queue.youtube_members_only = self._youtube_members_only_cb.isChecked()
+        self._queue.youtube_superchats_only = self._youtube_superchats_only_cb.isChecked()
+
+        disabled_replies = [key for key, cb in self._bot_reply_toggles if not cb.isChecked()]
+        self._queue.twitch_bot_disabled_replies = disabled_replies
+        self._queue.twitch_bot_no_prefix = self._twitch_bot_no_prefix_cb.isChecked()
+
+        self.accept()
+
+    def _select_tab(self, index: int) -> None:
+        self.tabs_stacked.setCurrentIndex(index)
+        for i, btn in enumerate(self.tab_buttons):
+            btn.setChecked(i == index)
+
+    def refresh(self) -> None:
+        self._levels_tab.refresh()
+        self._authors_tab.refresh()
+        self._requesters_tab.refresh()
+
+    def _on_queue_command_toggled(self, checked: bool) -> None:
+        if self._queue_command_cb is None:
+            return
+        if checked and not self._has_chat_edit_scope:
+            self._queue_command_cb.blockSignals(True)
+            self._queue_command_cb.setChecked(False)
+            self._queue_command_cb.blockSignals(False)
+            QMessageBox.information(self, "Twitch", "You need to re-login")
+            return
+        set_queue_command_enabled(checked)
+        self.queue_command_changed.emit(checked)
+
+    def _on_channel_moderate_toggled(self, checked: bool) -> None:
+        if self._channel_moderate_cb is None:
+            return
+        if checked and not self._has_channel_moderate_scope:
+            self._channel_moderate_cb.blockSignals(True)
+            self._channel_moderate_cb.setChecked(False)
+            self._channel_moderate_cb.blockSignals(False)
+            QMessageBox.information(self, "Twitch", "You need to re-login")
+            return
+        set_channel_moderate_enabled(checked)
+
+    def _login_twitch(self) -> None:
+        include_chat_edit = self._login_queue_command_cb.isChecked()
+        include_channel_moderate = self._login_channel_moderate_cb.isChecked()
+        dialog = TwitchLoginDialog(
+            self,
+            include_chat_edit=include_chat_edit,
+            include_channel_moderate=include_channel_moderate,
+            hide_queue_checkbox=True,
+            hide_moderate_checkbox=True,
+        )
+        if dialog.exec() != QDialog.DialogCode.Accepted or not dialog.session:
+            return
+        self.twitch_logged_in.emit(dialog.session)
+        self.accept()
+
+    def _logout(self) -> None:
+        answer = QMessageBox.question(
+            self,
+            "Log Out",
+            "Log out from Twitch? You can log in again immediately.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        clear_auth()
+        self.logged_out.emit()
+        self.accept()
+
+    def _connect_youtube(self) -> None:
+        username = self._youtube_username_input.text().strip()
+        
+        if not username:
+            QMessageBox.warning(
+                self,
+                "YouTube Connection",
+                "Please enter your YouTube username. (dw about the @, I added it for you)",
+            )
+            return
+        
+        if not username.startswith("@"):
+            username = "@" + username
+            youtube_layout.addSpacing(15)
+            
+            username_label = QLabel("YouTube Username (@username):")
+            youtube_layout.addWidget(username_label)
+            
+            self._youtube_username_input = QLineEdit()
+            self._youtube_username_input.setPlaceholderText("@YourUsername")
+            youtube_layout.addWidget(self._youtube_username_input)
+            
+            youtube_layout.addSpacing(10)
+            
+            connect_btn = QPushButton("Connect YouTube")
+            connect_btn.clicked.connect(self._connect_youtube)
+            youtube_layout.addWidget(connect_btn)
+
+        youtube_layout.addSpacing(15)
+        yt_priority_group_label = QLabel("YouTube Priorities & Restrictions:")
+        yt_priority_group_font = yt_priority_group_label.font()
+        yt_priority_group_font.setBold(True)
+        yt_priority_group_label.setFont(yt_priority_group_font)
+        youtube_layout.addWidget(yt_priority_group_label)
+
+        self._youtube_member_priority_cb = QCheckBox("Member Priority")
+        self._youtube_member_priority_cb.setChecked(queue.youtube_member_priority)
+        youtube_layout.addWidget(self._youtube_member_priority_cb)
+
+        self._youtube_superchat_priority_cb = QCheckBox("Superchat Priority")
+        self._youtube_superchat_priority_cb.setChecked(queue.youtube_superchat_priority)
+        youtube_layout.addWidget(self._youtube_superchat_priority_cb)
+
+        self._youtube_members_only_cb = QCheckBox("Members Only (ONLY accept the level if its a member)")
+        self._youtube_members_only_cb.setChecked(queue.youtube_members_only)
+        youtube_layout.addWidget(self._youtube_members_only_cb)
+
+        self._youtube_superchats_only_cb = QCheckBox("Superchats Only (ONLY accept the level if its a superchat)")
+        self._youtube_superchats_only_cb.setChecked(queue.youtube_superchats_only)
+        youtube_layout.addWidget(self._youtube_superchats_only_cb) # 🤑🤑🤑
+
+        youtube_layout.addStretch()
+        tabs.addTab(youtube_tab, "YouTube")
+
+        self._api_tab = ApiTab(queue, cloudflared)
+        tabs.addTab(self._api_tab, "API")
+
+        self._level_history_tab = LevelHistoryTab(queue)
+        tabs.addTab(self._level_history_tab, "Level History")
+
+        self._keybinds_tab = KeybindsTab()
+        tabs.addTab(self._keybinds_tab, "Keybinds")
+
+        self._info_tab = InfoTab()
+        tabs.addTab(self._info_tab, "Info")
+
+        self._geode_tab = GeodeIntegrationTab()
+        tabs.addTab(self._geode_tab, "Geode Integration")
+
+        self._updater_tab = UpdaterTab(self)
+        tabs.addTab(self._updater_tab, "Updater")
+
+        layout.addLayout(self.tabs_grid)
+        layout.addWidget(self.tabs_stacked)
+
+        self._level_history_label = QLabel()
+        self._level_history_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._level_history_label.setWordWrap(True)
+        layout.addWidget(self._level_history_label)
+
+        close_btn = QPushButton("Close")
+        close_btn.clicked.connect(self._on_close)
+        layout.addWidget(close_btn)
+
+        self._level_history_tab._status_label = self._level_history_label
+
+        self.refresh()
+
+    def _on_close(self) -> None:
+        self._general_tab.apply()
+        self._filters_tab.apply_filters()
+        if not self._api_tab.apply():
+            return
+
+        bot_channel = self._twitch_bot_channel_input.text().strip()
+        if bot_channel and self._twitch_session:
+            from hwgdreqs.twitch_auth import check_twitch_user_exists
+            if not check_twitch_user_exists(self._twitch_session, bot_channel):
+                QMessageBox.warning(self, "Error", "Channel doesnt exist, recheck")
+                for i in range(self.tabs_stacked.count()):
+                    if self.tabs_stacked.widget(i) is self._twitch_bot_channel_input.parent():
+                        self._select_tab(i)
+                        break
+                return
+
+        self._queue.twitch_bot_channel_name = bot_channel
+        self._queue.max_levels_per_requester = self._general_tab._max_levels_spinbox.value()
+        self._queue.twitch_sub_priority = self._twitch_sub_priority_cb.isChecked()
+        self._queue.twitch_vip_priority = self._twitch_vip_priority_cb.isChecked()
+        self._queue.twitch_mod_priority = self._twitch_mod_priority_cb.isChecked()
+        self._queue.twitch_subs_only = self._twitch_subs_only_cb.isChecked()
+        self._queue.twitch_vip_only = self._twitch_vip_only_cb.isChecked()
+        self._queue.twitch_followers_only = self._twitch_followers_only_cb.isChecked()
+        
+        self._queue.twitch_reward_id = self._twitch_rewards_combo.currentData()
+        self._queue.twitch_reward_name = self._twitch_rewards_combo.currentText()
+        self._queue.twitch_reward_only = self._twitch_reward_only_cb.isChecked()
+        self._queue.twitch_reward_priority = self._twitch_reward_priority_cb.isChecked()
+
         self._queue.youtube_member_priority = self._youtube_member_priority_cb.isChecked()
         self._queue.youtube_superchat_priority = self._youtube_superchat_priority_cb.isChecked()
         self._queue.youtube_members_only = self._youtube_members_only_cb.isChecked()
@@ -1250,14 +1548,69 @@ class SettingsDialog(QDialog):
         )
         if answer != QMessageBox.StandardButton.Yes:
             return
-        
+            
         clear_youtube_auth()
         self._youtube_session = None
-        
+        self.youtube_updated.emit()
         QMessageBox.information(
             self,
             "YouTube Disconnected",
             "Disconnected from YouTube.",
         )
-        self.youtube_updated.emit()
         self.accept()  # close dialog
+
+    def _on_fetch_custom_rewards_clicked(self) -> None:
+        if not self._twitch_session:
+            QMessageBox.warning(self, "Twitch", "You must be logged in to Twitch to fetch custom rewards.")
+            return
+
+        msg = QMessageBox(self)
+        msg.setWindowTitle("Account Check")
+        msg.setText("Are you logged in under your main streamer account or a bot one?")
+        main_btn = msg.addButton("Main Account", QMessageBox.ButtonRole.AcceptRole)
+        bot_btn = msg.addButton("Bot Account", QMessageBox.ButtonRole.RejectRole)
+        msg.exec()
+        
+        if msg.clickedButton() == bot_btn:
+            bot_msg = QMessageBox(self)
+            bot_msg.setWindowTitle("Oops!")
+            bot_msg.setText("Well this shit can NOT fetch from your main acc if you're not logged in into it, so you gotta logout, login with the main one, select the reward, relogout, login again with the bot💀")
+            logout_btn = bot_msg.addButton("Logout Twitch", QMessageBox.ButtonRole.ActionRole)
+            cancel_btn = bot_msg.addButton("Cancel", QMessageBox.ButtonRole.RejectRole)
+            bot_msg.exec()
+            if bot_msg.clickedButton() == logout_btn:
+                self._logout()
+            return
+            
+        url = "https://api.twitch.tv/helix/channel_points/custom_rewards"
+        from hwgdreqs.config import TWITCH_CLIENT_ID
+        headers = {
+            "Client-ID": TWITCH_CLIENT_ID,
+            "Authorization": f"Bearer {self._twitch_session.access_token}"
+        }
+        params = {
+            "broadcaster_id": self._twitch_session.user_id,
+            "only_manageable_rewards": "false"
+        }
+        try:
+            response = requests.get(url, headers=headers, params=params, timeout=10)
+            if response.status_code == 200:
+                rewards = response.json().get("data", [])
+                text_rewards = [r for r in rewards if r.get("is_user_input_required")]
+                
+                self._twitch_rewards_combo.clear()
+                self._twitch_rewards_combo.addItem("None", "")
+                for r in text_rewards:
+                    self._twitch_rewards_combo.addItem(r["title"], r["id"])
+                    
+                idx = self._twitch_rewards_combo.findData(self._queue.twitch_reward_id)
+                if idx >= 0:
+                    self._twitch_rewards_combo.setCurrentIndex(idx)
+                else:
+                    self._twitch_rewards_combo.setCurrentIndex(0)
+                    
+                QMessageBox.information(self, "Success", f"Fetched {len(text_rewards)} rewards that require text input.")
+            else:
+                QMessageBox.critical(self, "Error", f"Failed to fetch rewards: {response.text}")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Error fetching rewards: {e}")

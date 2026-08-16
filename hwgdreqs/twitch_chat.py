@@ -156,6 +156,8 @@ class TwitchChatWorker(QObject):
             is_mod = is_broadcaster or (tags.get("mod") == "1") or ("moderator/" in badges)
             is_sub = is_broadcaster or (tags.get("subscriber") == "1") or ("subscriber/" in badges) or ("founder/" in badges)
             is_vip = is_broadcaster or ("vip/" in badges)
+            
+            custom_reward_id = tags.get("custom-reward-id", "")
 
             if not self._handle_commands(username, message):
                 self._scan_for_levels(
@@ -166,6 +168,7 @@ class TwitchChatWorker(QObject):
                     is_mod=is_mod,
                     is_sub=is_sub,
                     is_vip=is_vip,
+                    custom_reward_id=custom_reward_id,
                 )
         except Exception:
             # H4 fix: previously silently swallowed, hiding real bugs in chat
@@ -182,6 +185,7 @@ class TwitchChatWorker(QObject):
         is_mod: bool = False,
         is_sub: bool = False,
         is_vip: bool = False,
+        custom_reward_id: str = "",
     ) -> None:
         # see restrictions
         if self._queue.twitch_subs_only and not is_sub and not is_mod and not is_broadcaster:
@@ -194,6 +198,13 @@ class TwitchChatWorker(QObject):
                     return
             else:
                 return
+
+        reward_matches = False
+        if self._queue.twitch_reward_id and custom_reward_id == self._queue.twitch_reward_id:
+            reward_matches = True
+
+        if self._queue.twitch_reward_only and not reward_matches:
+            return
 
         matches = []
         for m in LEVEL_RE.finditer(message):
@@ -219,7 +230,9 @@ class TwitchChatWorker(QObject):
             
             # see priority
             priority = False
-            if is_broadcaster:
+            if reward_matches and self._queue.twitch_reward_priority:
+                priority = True
+            elif is_broadcaster:
                 if self._queue.twitch_sub_priority or self._queue.twitch_vip_priority or self._queue.twitch_mod_priority:
                     priority = True
             elif is_mod and self._queue.twitch_mod_priority:
@@ -246,27 +259,32 @@ class TwitchChatWorker(QObject):
         
         command = parts[0].lower()
         
-        if command == "!del" and len(parts) >= 2:
+        if command == self._queue.command_del.lower() and len(parts) >= 2:
             level_id = parts[1]
             logger.info(f"!del command from {requester}: level_id={level_id}")
             self._delete_level_command(requester, level_id)
             return True
         
-        if command == "!replace" and len(parts) >= 3:
+        if command == self._queue.command_replace.lower() and len(parts) >= 3:
             old_level_id = parts[1]
             new_level_id = parts[2]
             logger.info(f"!replace command from {requester}: {old_level_id} -> {new_level_id}")
             self._replace_level_command(requester, old_level_id, new_level_id, message)
             return True
 
-        if command == "!queue" and self._queue_command_enabled:
+        if command == self._queue.command_queue.lower() and self._queue_command_enabled:
             logger.info(f"!queue command from {requester}")
             self._queue_command()
             return True
         
-        if command == "!whereami" and self._queue_command_enabled:
+        if command == self._queue.command_whereami.lower() and self._queue_command_enabled:
             logger.info(f"!whereami command from {requester}")
             self._whereami_command(requester)
+            return True
+
+        if command == self._queue.command_commands.lower():
+            logger.info(f"!commands command from {requester}")
+            self._commands_command(requester)
             return True
         
         return False
@@ -315,6 +333,21 @@ class TwitchChatWorker(QObject):
             msg = f"[HwGDReqs] you're in position {pos} with your level '{name}'"
             
         self._maybe_send("whereami_pos", msg)
+
+    def _commands_command(self, requester: str) -> None:
+        cmds = [
+            f"{self._queue.command_del} <id> (Delete a level from your queue)",
+            f"{self._queue.command_replace} <id> <new-id> (Replace a level in your queue)",
+            f"{self._queue.command_commands} (Show available commands)"
+        ]
+        if self._queue_command_enabled:
+            cmds.extend([
+                f"{self._queue.command_queue} (Show the current queue)",
+                f"{self._queue.command_whereami} (Show your position in the queue)"
+            ])
+        
+        msg = f"[HwGDReqs] @{requester}, available commands: {', '.join(cmds)}"
+        self._maybe_send("commands_list", msg)
 
 
 
