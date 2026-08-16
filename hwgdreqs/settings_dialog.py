@@ -74,6 +74,70 @@ class BlacklistTab(QWidget):
         self.refresh()
 
 
+class RequesterBlacklistTab(QWidget):
+    def __init__(self, queue: QueueManager, parent=None) -> None:
+        super().__init__(parent)
+        self._queue = queue
+
+        layout = QVBoxLayout(self)
+        layout.addWidget(QLabel(
+            "Blacklisted requesters' levels will not be added to the queue.\n"
+        ))
+
+        self._list = QListWidget()
+        layout.addWidget(self._list)
+
+        remove_btn = QPushButton("Remove Selected")
+        remove_btn.clicked.connect(self._remove_selected)
+        layout.addWidget(remove_btn)
+
+    def refresh(self) -> None:
+        self._list.clear()
+        
+        names = self._queue.blacklist_requesters
+        ids = self._queue.blacklist_requester2s
+        
+        name_to_id = {}
+        id_to_name = {}
+        for entry in list(self._queue.levels) + list(self._queue.level_history):
+            if entry.requester and entry.requester2:
+                name_to_id[entry.requester.lower()] = entry.requester2
+                id_to_name[entry.requester2] = entry.requester
+
+        displayed_ids = set()
+
+        for name in names:
+            req_id = name_to_id.get(name.lower())
+            if req_id and req_id in ids:
+                self._list.addItem(f"{name} (ID: {req_id})")
+                displayed_ids.add(req_id)
+            else:
+                self._list.addItem(name)
+                
+        for req_id in ids:
+            if req_id not in displayed_ids:
+                name = id_to_name.get(req_id, "Unknown")
+                self._list.addItem(f"{name} (ID: {req_id})")
+
+    def _remove_selected(self) -> None:
+        import re
+        item = self._list.currentItem()
+        if not item:
+            return
+        text = item.text()
+        
+        match = re.search(r"^(.*?) \(ID: (.*?)\)$", text)
+        if match:
+            name = match.group(1)
+            req_id = match.group(2)
+            if name != "Unknown":
+                self._queue.remove_blacklist_requester(name)
+            self._queue.remove_blacklist_requester2(req_id)
+        else:
+            self._queue.remove_blacklist_requester(text)
+        self.refresh()
+
+
 class FiltersTab(QWidget):
     LENGTH_OPTIONS = ["Tiny", "Short", "Medium", "Long", "XL", "Plat"]
     DIFFICULTY_OPTIONS = [
@@ -923,12 +987,7 @@ class SettingsDialog(QDialog):
         )
         tabs.addTab(self._authors_tab, "Blacklisted Authors")
 
-        self._requesters_tab = BlacklistTab(
-            "Blacklisted requesters will not be added to the queue.",
-            queue,
-            lambda: queue.blacklist_requesters,
-            queue.remove_blacklist_requester,
-        )
+        self._requesters_tab = RequesterBlacklistTab(queue)
         tabs.addTab(self._requesters_tab, "Blacklisted Requesters")
         
         self._filters_tab = FiltersTab(queue)

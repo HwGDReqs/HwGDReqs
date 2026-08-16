@@ -245,7 +245,7 @@ class TwitchChatWorker(QObject):
             added_any = False
             for level_id in level_ids:
                 self.level_detected.emit(requester, level_id)
-                if self._enqueue_level(requester, level_id, message, priority=priority):
+                if self._enqueue_level(requester, level_id, message, priority=priority, requester2=user_id):
                     added_any = True
 
             if added_any:
@@ -445,7 +445,7 @@ class TwitchChatWorker(QObject):
         )
         self.status_changed.emit(f"Replaced level {old_level_id} with {new_level_id} for {requester}")
 
-    def _enqueue_level(self, requester: str, level_id: str, message: str, priority: bool = False) -> bool:
+    def _enqueue_level(self, requester: str, level_id: str, message: str, priority: bool = False, requester2: str = "") -> bool:
         if any(e.id == level_id for e in self._queue.levels):
             self._maybe_send("already_in_queue", f"[HwGDReqs] @{requester} your level \"{level_id}\" is already in the queue.")
             return False
@@ -457,7 +457,7 @@ class TwitchChatWorker(QObject):
         try:
             data = fetch_level_normalized(level_id)
         except LevelFetchTimeoutError:
-            return self._enqueue_placeholder(requester, level_id, message, priority, "timeout - gdbrowser took too long")
+            return self._enqueue_placeholder(requester, level_id, message, priority, "timeout - gdbrowser took too long", requester2=requester2)
         except LevelNotFoundError:
             logger.warning(f"Level ID {level_id} not found on Geometry Dash servers")
             if not self._queue.allow_any_level:
@@ -468,9 +468,10 @@ class TwitchChatWorker(QObject):
                 requester, level_id, message, priority,
                 reason=f"Level ID {level_id} not found on Geometry Dash servers",
                 status_text=f"Level ID {level_id} not found on Geometry Dash servers, so added bare ID",
+                requester2=requester2,
             )
         except GDBrowserError as e:
-            return self._enqueue_placeholder(requester, level_id, message, priority, str(e))
+            return self._enqueue_placeholder(requester, level_id, message, priority, str(e), requester2=requester2)
 
         added = self._queue.add_level(
             level_id=str(data.get("id", level_id)),
@@ -489,6 +490,7 @@ class TwitchChatWorker(QObject):
             downloads=int(data.get("downloads", 0)),
             version=int(data.get("version", 0)),
             priority=priority,
+            requester2=requester2,
         )
         if added:
             self.status_changed.emit(f"Queued: '{data.get('name')}' by '{data.get('author')}' from '{requester}'")
@@ -507,7 +509,7 @@ class TwitchChatWorker(QObject):
                 self._maybe_send("filtered_out", f"[HwGDReqs] @{requester} your level \"{level_id}\" could not be added because of Filters")
         return added
 
-    def _enqueue_placeholder(self, requester: str, level_id: str, message: str, priority: bool, reason: str, status_text: str | None = None) -> bool:
+    def _enqueue_placeholder(self, requester: str, level_id: str, message: str, priority: bool, reason: str = "", status_text: str | None = None, requester2: str = "") -> bool:
         """Shared fallback for _enqueue_level: if allow_any_level is on, add
         a bare-ID placeholder entry when the real level data couldn't be
         fetched (timeout / not found / other GDBrowser error); otherwise
@@ -534,6 +536,7 @@ class TwitchChatWorker(QObject):
             likes=placeholder["likes"],
             downloads=placeholder["downloads"],
             priority=priority,
+            requester2=requester2,
         )
         if added:
             self.status_changed.emit(status_text or f"Failed to fetch level ({reason}), so added bare ID")

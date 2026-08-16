@@ -114,7 +114,8 @@ def _make_handler(queue: QueueManager, session: TwitchSession | None = None, cha
                 self._send_json({
                     "levels": queue.blacklist_levels,
                     "authors": queue.blacklist_authors,
-                    "requesters": queue.blacklist_requesters
+                    "requesters": queue.blacklist_requesters,
+                    "requester2s": queue.blacklist_requester2s,
                 })
                 return
             if path == "/search":
@@ -203,6 +204,7 @@ def _make_handler(queue: QueueManager, session: TwitchSession | None = None, cha
                 message = params.get("message", "")
                 priority = str(params.get("prio", "")).lower() == "true"
                 platform_icon = params.get("platform-icon", "")
+                requester2 = params.get("requester2", "")
 
                 success = queue.add_level(
                     level_id=level_id,
@@ -222,6 +224,7 @@ def _make_handler(queue: QueueManager, session: TwitchSession | None = None, cha
                     downloads=int(level_data.get("downloads", 0)),
                     priority=priority,
                     version=int(level_data.get("version", 0)),
+                    requester2=requester2,
                 )
 
                 if success:
@@ -296,8 +299,11 @@ def _make_handler(queue: QueueManager, session: TwitchSession | None = None, cha
                     self._send_json({"ok": False, "error": "not_found"}, status=404)
                     return
                 queue.blacklist_requester(entry.requester)
+                if entry.requester2:
+                    queue.blacklist_requester2(entry.requester2)
                 self._send_json({"ok": True})
                 return
+
 
             if path == "/banauthor":
                 if not level_id:

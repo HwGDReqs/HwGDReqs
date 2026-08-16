@@ -46,7 +46,7 @@ class LevelEntry:
     superchat: bool = False
     superchat_amount: str = ""
     member: bool = False
-
+    requester2: str = ""
 
 import random
 
@@ -57,6 +57,7 @@ class QueueData:
     blacklist_levels: list[str] = field(default_factory=list)
     blacklist_authors: list[str] = field(default_factory=list)
     blacklist_requesters: list[str] = field(default_factory=list)
+    blacklist_requester2s: list[str] = field(default_factory=list)
     allowed_lengths: list[str] = field(default_factory=lambda: ["Tiny", "Short", "Medium", "Long", "XL", "Plat"])
     allowed_difficulties: list[str] = field(default_factory=lambda: ["Unrated", "Auto", "Easy", "Normal", "Hard", "Harder", "Insane", "Easy Demon", "Medium Demon", "Hard Demon", "Insane Demon", "Extreme Demon"])
     no_disliked: bool = False
@@ -67,7 +68,8 @@ class QueueData:
     blacklist_timestamps: dict[str, dict[str, float]] = field(default_factory=lambda: {
         "levels": {},
         "authors": {},
-        "requesters": {}
+        "requesters": {},
+        "requester2s": {},
     })
     # API settings
     api_local_port: int = 6767
@@ -171,6 +173,11 @@ class QueueManager(QObject):
     def blacklist_requesters(self) -> list[str]:
         with self._lock:
             return list(self._data.blacklist_requesters)
+
+    @property
+    def blacklist_requester2s(self) -> list[str]:
+        with self._lock:
+            return list(self._data.blacklist_requester2s)
 
     @property
     def allowed_lengths(self) -> list[str]:
@@ -662,6 +669,7 @@ class QueueManager(QObject):
                     superchat=entry.get("superchat", False),
                     superchat_amount=entry.get("superchat_amount", ""),
                     member=entry.get("member", False),
+                    requester2=entry.get("requester2", ""),
                 )
                 for entry in raw.get("levels", [])
             ],
@@ -688,12 +696,14 @@ class QueueManager(QObject):
                     superchat=entry.get("superchat", False),
                     superchat_amount=entry.get("superchat_amount", ""),
                     member=entry.get("member", False),
+                    requester2=entry.get("requester2", ""),
                 )
                 for entry in raw.get("level_history", [])
             ],
             blacklist_levels=list(raw.get("blacklist_levels", [])),
             blacklist_authors=list(raw.get("blacklist_authors", [])),
             blacklist_requesters=list(raw.get("blacklist_requesters", [])),
+            blacklist_requester2s=list(raw.get("blacklist_requester2s", [])),
             allowed_lengths=list(raw.get("allowed_lengths", ["Tiny", "Short", "Medium", "Long", "XL", "Plat"])),
             allowed_difficulties=list(raw.get("allowed_difficulties", ["Unrated", "Auto", "Easy", "Normal", "Hard", "Harder", "Insane", "Easy Demon", "Medium Demon", "Hard Demon", "Insane Demon", "Extreme Demon"])),
             no_disliked=bool(raw.get("no_disliked", False)),
@@ -738,7 +748,8 @@ class QueueManager(QObject):
         new_data.blacklist_timestamps = {
             "levels": blacklist_timestamps.get("levels", {}),
             "authors": blacklist_timestamps.get("authors", {}),
-            "requesters": blacklist_timestamps.get("requesters", {})
+            "requesters": blacklist_timestamps.get("requesters", {}),
+            "requester2s": blacklist_timestamps.get("requester2s", {}),
         }
         for item in new_data.blacklist_levels:
             if item not in new_data.blacklist_timestamps["levels"]:
@@ -751,6 +762,9 @@ class QueueManager(QObject):
             key = item.lower()
             if key not in new_data.blacklist_timestamps["requesters"]:
                 new_data.blacklist_timestamps["requesters"][key] = 0.0
+        for item in new_data.blacklist_requester2s:
+            if item not in new_data.blacklist_timestamps["requester2s"]:
+                new_data.blacklist_timestamps["requester2s"][item] = 0.0
 
         with self._lock:
             self._data = new_data
@@ -766,6 +780,7 @@ class QueueManager(QObject):
                 "blacklist_levels": self._data.blacklist_levels,
                 "blacklist_authors": self._data.blacklist_authors,
                 "blacklist_requesters": self._data.blacklist_requesters,
+                "blacklist_requester2s": self._data.blacklist_requester2s,
                 "allowed_lengths": self._data.allowed_lengths,
                 "allowed_difficulties": self._data.allowed_difficulties,
                 "no_disliked": self._data.no_disliked,
@@ -888,6 +903,7 @@ class QueueManager(QObject):
         superchat: bool = False,
         superchat_amount: str = "",
         member: bool = False,
+        requester2: str = "",
     ) -> bool:
         level_id = str(level_id)
         author_lower = author.lower()
@@ -921,6 +937,8 @@ class QueueManager(QObject):
             if accepted and author_lower in [a.lower() for a in self._data.blacklist_authors]:
                 accepted = False
             if accepted and requester_lower in [r.lower() for r in self._data.blacklist_requesters]:
+                accepted = False
+            if accepted and requester2 and requester2 in self._data.blacklist_requester2s:
                 accepted = False
             if accepted and any(entry.id == level_id for entry in self._data.levels):
                 accepted = False
@@ -967,6 +985,7 @@ class QueueManager(QObject):
                     superchat=superchat,
                     superchat_amount=superchat_amount,
                     member=member,
+                    requester2=requester2,
                 )
 
                 if priority:
@@ -1024,6 +1043,7 @@ class QueueManager(QObject):
         difficulty: str,
         requester: str,
         platform: str = "twitch",
+        platform_icon: str = "",
         message: str = "",
         description: str = "",
         length: str = "",
@@ -1076,6 +1096,7 @@ class QueueManager(QObject):
                 superchat=superchat if superchat else (old_level.superchat if old_level else False),
                 superchat_amount=superchat_amount if superchat_amount else (old_level.superchat_amount if old_level else ""),
                 member=member if member else (old_level.member if old_level else False),
+                requester2=old_level.requester2 if old_level else "",
             )
 
             self._data.levels[old_index] = entry
@@ -1128,6 +1149,15 @@ class QueueManager(QObject):
         self._notify()
         log_requester_blacklisted(requester)
 
+    def blacklist_requester2(self, requester2: str) -> None:
+        with self._lock:
+            if requester2 in self._data.blacklist_requester2s:
+                return
+            self._data.blacklist_requester2s.append(requester2)
+            self._data.blacklist_timestamps["requester2s"][requester2] = time.time()
+            self.save()
+        self._notify()
+
     def remove_blacklist_level(self, level_id: str) -> None:
         with self._lock:
             self._data.blacklist_levels = [
@@ -1162,6 +1192,15 @@ class QueueManager(QObject):
 
         self._notify()
         log_requester_unblacklisted(requester)
+
+    def remove_blacklist_requester2(self, requester2: str) -> None:
+        with self._lock:
+            self._data.blacklist_requester2s = [
+                r for r in self._data.blacklist_requester2s if r != requester2
+            ]
+            self._data.blacklist_timestamps["requester2s"].pop(requester2, None)
+            self.save()
+        self._notify()
 
     def clear_queue(self) -> None:
         with self._lock:

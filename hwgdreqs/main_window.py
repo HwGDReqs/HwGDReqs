@@ -1012,6 +1012,8 @@ class MainWindow(QMainWindow):
         if not entry:
             return
         self._queue.blacklist_requester(entry.requester)
+        if entry.requester2:
+            self._queue.blacklist_requester2(entry.requester2)
 
     def _blacklist_author(self) -> None:
         entry = self._selected_entry()
@@ -1274,6 +1276,10 @@ class MainWindow(QMainWindow):
         )
         if reply == QMessageBox.StandardButton.Yes:
             self._queue.blacklist_requester(requester)
+            for entry in list(self._queue.levels) + list(self._queue.level_history):
+                if entry.requester.lower() == requester.lower() and entry.requester2:
+                    self._queue.blacklist_requester2(entry.requester2)
+                    break
             self._queue.remove_levels_by_requester(requester)
             self.statusBar().showMessage(f"Blacklisted '{requester}' and deleted their levels")
 
@@ -1339,6 +1345,10 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Ban Requester Failed", f"Could not ban {requester}:\n{error}")
         else:
             self._queue.blacklist_requester(requester)
+            for entry in list(self._queue.levels) + list(self._queue.level_history):
+                if entry.requester.lower() == requester.lower() and entry.requester2:
+                    self._queue.blacklist_requester2(entry.requester2)
+                    break
             self._queue.remove_levels_by_requester(requester)
             QMessageBox.information(self, "Ban & Blacklist Requester", f"Successfully banned & blacklisted '{requester}' and deleted all their levels.")
 

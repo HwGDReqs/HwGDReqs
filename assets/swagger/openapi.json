@@ -2,7 +2,7 @@
   "openapi": "3.0.0",
   "info": {
     "title": "HwGDReqs API",
-    "version": "1.3.0",
+    "version": "1.4.0",
     "description": "API for interacting with the Geometry Dash Request Queue"
   },
   "paths": {
@@ -35,6 +35,14 @@
                           "aredl_position": {
                             "type": "integer",
                             "description": "The rank of the level on the AREDL (if applicable)"
+                          },
+                          "requester": {
+                            "type": "string",
+                            "description": "Display name of the requester (Twitch login or YouTube channel name)"
+                          },
+                          "requester2": {
+                            "type": "string",
+                            "description": "Platform user/channel ID: Twitch user-id or YouTube channelId"
                           }
                         }
                       }
@@ -82,6 +90,14 @@
                         "aredl_position": {
                           "type": "integer",
                           "description": "The rank of the level on the AREDL (if applicable)"
+                        },
+                        "requester": {
+                          "type": "string",
+                          "description": "Display name of the requester"
+                        },
+                        "requester2": {
+                          "type": "string",
+                          "description": "Platform user/channel ID"
                         }
                       }
                     }
@@ -141,6 +157,14 @@
               "type": "string"
             },
             "description": "URL or path to a platform icon"
+          },
+          {
+            "name": "requester2",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Platform user/channel ID for the requester (e.g. Twitch user-id or YouTube channelId). Used for ID-based blacklisting."
           }
         ],
         "responses": {
@@ -281,7 +305,7 @@
     },
     "/banrequester": {
       "post": {
-        "summary": "Ban a requester (POST)",
+        "summary": "Ban a requester by name (and their platform ID if known) (POST)",
         "parameters": [
           {
             "name": "id",
@@ -289,7 +313,29 @@
             "required": true,
             "schema": {
               "type": "string"
-            }
+            },
+            "description": "Level ID whose requester should be banned"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/banrequester2": {
+      "post": {
+        "summary": "Blacklist a requester by platform ID directly (POST)",
+        "parameters": [
+          {
+            "name": "requester2",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Platform user/channel ID to blacklist (eg Twitch user-id or YouTube channelId)"
           }
         ],
         "responses": {

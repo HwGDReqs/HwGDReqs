@@ -180,13 +180,15 @@ class YoutubeChatWorker(QObject):
 
     def _enqueue_level(self, requester: str, level_id: str, message: str, *,
                        priority: bool = False, superchat: bool = False,
-                       superchat_amount: str = "", member: bool = False) -> bool:
+                       superchat_amount: str = "", member: bool = False,
+                       requester2: str = "") -> bool:
         try:
             data = fetch_level_normalized(level_id)
         except LevelFetchTimeoutError:
             return self._enqueue_placeholder(
                 requester, level_id, message, priority, superchat, superchat_amount, member,
                 reason="timeout - gdbrowser took too long",
+                requester2=requester2,
             )
         except LevelNotFoundError:
             logger.warning(f"Level ID {level_id} not found on Geometry Dash servers")
@@ -197,11 +199,13 @@ class YoutubeChatWorker(QObject):
                 requester, level_id, message, priority, superchat, superchat_amount, member,
                 reason=f"Level ID {level_id} not found on Geometry Dash servers",
                 status_text=f"Level ID {level_id} not found on Geometry Dash servers, so added bare ID",
+                requester2=requester2,
             )
         except GDBrowserError as e:
             return self._enqueue_placeholder(
                 requester, level_id, message, priority, superchat, superchat_amount, member,
                 reason=str(e),
+                requester2=requester2,
             )
 
         added = self._queue.add_level(
@@ -224,6 +228,7 @@ class YoutubeChatWorker(QObject):
             superchat=superchat,
             superchat_amount=superchat_amount,
             member=member,
+            requester2=requester2,
         )
         if added:
             logger.info(f"Queued: '{data.get('name')}' by '{data.get('author')}' from '{requester}'")
@@ -233,7 +238,7 @@ class YoutubeChatWorker(QObject):
     def _enqueue_placeholder(
         self, requester: str, level_id: str, message: str, priority: bool,
         superchat: bool, superchat_amount: str, member: bool,
-        reason: str, status_text: str | None = None,
+        reason: str, status_text: str | None = None, requester2: str = "",
     ) -> bool:
         if not self._queue.allow_any_level:
             logger.warning(f"Failed to fetch level {level_id} ({reason})")
@@ -258,6 +263,7 @@ class YoutubeChatWorker(QObject):
             superchat=superchat,
             superchat_amount=superchat_amount,
             member=member,
+            requester2=requester2,
         )
         if added:
             text = status_text or f"Failed to fetch level ({reason}), so added bare ID"
@@ -315,6 +321,7 @@ class YoutubeChatWorker(QObject):
 
                             author = c.author.name
                             message = c.message
+                            channel_id = getattr(c.author, "channelId", "") or ""
 
                             logger.info(f"YouTube Chat [{author}]: {message}")
                             
@@ -379,7 +386,8 @@ class YoutubeChatWorker(QObject):
                                                           priority=priority,
                                                           superchat=is_superchat,
                                                           superchat_amount=superchat_amount,
-                                                          member=is_member):
+                                                          member=is_member,
+                                                          requester2=channel_id):
                                         added_any = True
                                 if added_any:
                                     self._queue.update_cooldown(author)
