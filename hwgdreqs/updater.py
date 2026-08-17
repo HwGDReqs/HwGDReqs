@@ -57,7 +57,7 @@ def _detect_run_mode() -> str:
 
 
 def _parse_version(v: str) -> tuple[int, ...] | None:
-    """Parse a dotted numeric version string ('1.4.0', 'v1.2') into a tuple
+    """Parse a dotted numeric version string ('1.5.0', 'v1.2') into a tuple
     of ints for comparison. Returns None if it doesn't look like one.
     """
     v = v.strip().lower().lstrip("v")

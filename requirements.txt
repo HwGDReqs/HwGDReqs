@@ -4,3 +4,4 @@ yt-dlp
 pytchat
 cryptography
 keyring
+qrcode

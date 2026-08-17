@@ -583,10 +583,18 @@ class ApiTab(QWidget):
         layout.addWidget(self._host_network_check)
         
         # network API URL
+        network_url_layout = QHBoxLayout()
         self._network_url_label = QLabel()
         self._network_url_label.setWordWrap(True)
         self._network_url_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        layout.addWidget(self._network_url_label)
+        network_url_layout.addWidget(self._network_url_label)
+        
+        self._network_qr_btn = QPushButton("Show QR Code")
+        self._network_qr_btn.clicked.connect(lambda: self._show_qr(self._network_url_label.text().replace("Network API URL: ", "")))
+        self._network_qr_btn.hide()
+        network_url_layout.addWidget(self._network_qr_btn)
+        network_url_layout.addStretch()
+        layout.addLayout(network_url_layout)
         
         layout.addSpacing(10)
         
@@ -645,6 +653,10 @@ class ApiTab(QWidget):
         self._cloudflared_copy_btn.clicked.connect(self._copy_cloudflared_link)
         cloudflared_layout.addWidget(self._cloudflared_copy_btn)
 
+        self._cloudflared_qr_btn = QPushButton("Show QR Code")
+        self._cloudflared_qr_btn.clicked.connect(lambda: self._show_qr(self._cloudflared_link_label.text().replace("link: ", "")))
+        cloudflared_layout.addWidget(self._cloudflared_qr_btn)
+
         cloudflared_layout.addStretch()
         layout.addLayout(cloudflared_layout)
         self._cloudflared_patience_label = QLabel(
@@ -657,6 +669,7 @@ class ApiTab(QWidget):
         running = self._cloudflared.is_running()
         self._cloudflared_link_label.setVisible(running)
         self._cloudflared_copy_btn.setVisible(running)
+        self._cloudflared_qr_btn.setVisible(running)
         if running and self._cloudflared._url:
             self._cloudflared_link_label.setText(f"link: {self._cloudflared._url}")
 
@@ -676,8 +689,10 @@ class ApiTab(QWidget):
         if host_enabled:
             self._network_url_label.setText(f"Network API URL: http://{local_ip}:{network_port}")
             self._network_url_label.show()
+            self._network_qr_btn.show()
         else:
             self._network_url_label.hide()
+            self._network_qr_btn.hide()
 
         self._update_port_warning()
 
@@ -767,6 +782,7 @@ class ApiTab(QWidget):
         self._cloudflared_link_label.setText(f"link: {url}")
         self._cloudflared_link_label.show()
         self._cloudflared_copy_btn.show()
+        self._cloudflared_qr_btn.show()
 
     def _on_cloudflared_stopped(self):
         self._cloudflared._connecting = False
@@ -775,10 +791,64 @@ class ApiTab(QWidget):
         self._cloudflared_patience_label.hide()
         self._cloudflared_link_label.hide()
         self._cloudflared_copy_btn.hide()
+        self._cloudflared_qr_btn.hide()
         
     def _copy_cloudflared_link(self):
         text = self._cloudflared_link_label.text().replace("link: ", "")
         QGuiApplication.clipboard().setText(text)
+
+    def _show_qr(self, url: str):
+        if not url:
+            return
+        url = url.strip()
+        dialog = QDialog(self)
+        dialog.setWindowTitle("QR Code")
+        layout = QVBoxLayout(dialog)
+        layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        
+        label = QLabel("Generating QR Code...")
+        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(label)
+        
+        def generate():
+            try:
+                import qrcode
+                from io import BytesIO
+                qr = qrcode.QRCode(box_size=10, border=4)
+                qr.add_data(url)
+                qr.make(fit=True)
+                img = qr.make_image(fill_color="black", back_color="white")
+                buffer = BytesIO()
+                img.save(buffer, format="PNG")
+                return buffer.getvalue()
+            except ImportError:
+                import requests
+                response = requests.get(f"https://api.qrserver.com/v1/create-qr-code/?size=250x250&data={url}", timeout=5)
+                response.raise_for_status()
+                return response.content
+
+        def on_generated(data):
+            if isinstance(data, bytes):
+                pixmap = QPixmap()
+                pixmap.loadFromData(data)
+                label.setPixmap(pixmap)
+            else:
+                label.setText(f"Failed to generate QR Code.\n{data}")
+
+        class Worker(QThread):
+            def run(self):
+                try:
+                    data = generate()
+                    self.parent().generated = data
+                except Exception as e:
+                    self.parent().generated = str(e)
+
+        dialog.generated = None
+        worker = Worker(dialog)
+        worker.finished.connect(lambda: on_generated(dialog.generated))
+        worker.start()
+        
+        dialog.exec()
 
     def apply(self) -> bool:
         """Apply the API settings. Returns False (and leaves settings
