@@ -250,10 +250,13 @@ class MainWindow(QMainWindow):
         super().__init__(parent)
         self._queue = queue
         self._session: TwitchSession | None = None
+        self._kick_session = None
         self._youtube_session: YoutubeSession | None = None
         self._chat_worker: TwitchChatWorker | None = None
+        self._kick_chat_worker = None
         self._youtube_chat_worker: YoutubeChatWorker | None = None
         self._twitch_connected = False
+        self._kick_connected = False
         self._youtube_connected = False
         self._youtube_not_streaming = False
         self._network_manager = QNetworkAccessManager(self)
@@ -264,6 +267,7 @@ class MainWindow(QMainWindow):
         self._check_update_worker = None
         # Chat windows, lazily created, kept alive between openings
         self._twitch_chat_window: ChatWindow | None = None
+        self._kick_chat_window: ChatWindow | None = None
         self._youtube_chat_window: ChatWindow | None = None
         # Queue popout window
         self._popout_window: QueuePopoutWindow | None = None
@@ -278,6 +282,7 @@ class MainWindow(QMainWindow):
         # Load platform icons
         self._twitch_icon = QIcon(str(asset_path("twitch.svg")))
         self._youtube_icon = QIcon(str(asset_path("youtube.svg")))
+        self._kick_icon = QIcon(str(asset_path("kick.svg")))
 
         self.setWindowTitle("HwGDReqs")
         self.setMinimumSize(900, 520)
@@ -552,7 +557,10 @@ class MainWindow(QMainWindow):
         youtube_session = load_youtube_session()
         youtube_active = youtube_session is not None and bool(youtube_session.username)
 
-        if not session and not youtube_active:
+        from hwgdreqs.kick_auth import load_session as _load_kick_session
+        kick_active = _load_kick_session() is not None
+
+        if not session and not youtube_active and not kick_active:
             dialog = LoginDialog(None if not self.isVisible() else self)
             if dialog.exec() != LoginDialog.DialogCode.Accepted:
                 return False
@@ -560,8 +568,12 @@ class MainWindow(QMainWindow):
             session = dialog.session
             if dialog.youtube_session:
                 save_youtube_session(dialog.youtube_session)
+            if dialog.kick_session:
+                from hwgdreqs.kick_auth import save_kick_auth
+                save_kick_auth(dialog.kick_session.to_auth_dict())
+                self._kick_session = dialog.kick_session
             
-            if not session and not dialog.youtube_session:
+            if not session and not dialog.youtube_session and not dialog.kick_session:
                 return False
         
         self._apply_session(session)
@@ -610,8 +622,10 @@ class MainWindow(QMainWindow):
         self._youtube_not_streaming = False
         self._youtube_refreshing = False
         
-        # Always reload YouTube session in case it was just updated in settings
+        # Always reload YouTube and Kick sessions in case they were updated in settings
         self._youtube_session = load_youtube_session()
+        from hwgdreqs.kick_auth import load_session as _load_kick_session
+        self._kick_session = _load_kick_session()
         
         if session:
             self._chat_worker = TwitchChatWorker(
@@ -653,6 +667,27 @@ class MainWindow(QMainWindow):
             self._api_server.set_chat_callback(_api_requests_chat_callback)
         else:
             self._api_server.set_chat_callback(None)
+
+        if self._kick_session:
+            from hwgdreqs.kick_chat import KickChatWorker
+            self._kick_chat_worker = KickChatWorker(self._kick_session, self._queue)
+            self._kick_chat_worker.status_changed.connect(self._on_kick_status_changed)
+            self._kick_chat_worker.connection_failed.connect(self._on_kick_chat_failed)
+            self._kick_chat_worker.auth_failed.connect(lambda: None)  # no re-login for Kick yet
+            self._kick_chat_worker.message_received.connect(self._on_twitch_message_received)
+            self._kick_chat_worker.start()
+
+            if self._kick_chat_window is None:
+                self._kick_chat_window = ChatWindow(
+                    platform="kick",
+                    session=None,
+                    chat_worker=self._kick_chat_worker,
+                    can_send=True,
+                    can_ban=True,
+                    parent=None,
+                )
+            else:
+                self._kick_chat_window._chat_worker = self._kick_chat_worker
         
         if self._youtube_session:
             self._youtube_refreshing = True
@@ -668,28 +703,29 @@ class MainWindow(QMainWindow):
     def _update_connection_label(self) -> None:
         youtube_refreshing = getattr(self, "_youtube_refreshing", False)
 
-        if self._twitch_connected and self._youtube_connected:
-            label = f"Streamer: {self._session.display_name} (+ YouTube: {self._youtube_session.username})"
-        elif self._twitch_connected and youtube_refreshing:
-            label = f"Streamer: {self._session.display_name} | YouTube refreshing..."
-        elif self._twitch_connected and self._youtube_not_streaming:
-            label = f"Streamer: {self._session.display_name} | YouTube not streaming"
-        elif self._twitch_connected:
-            label = f"Streamer: {self._session.display_name}"
-        elif self._youtube_connected:
-            label = f"Connected to YouTube: {self._youtube_session.username}"
-        elif youtube_refreshing:
-            label = f"YouTube: {self._youtube_session.username} (refreshing...)"
-        elif self._youtube_not_streaming:
-            label = f"YouTube: {self._youtube_session.username} (not streaming)"
-        else:
-            label = "Not connected"
-        
+        platforms = []
+        if self._twitch_connected and self._session:
+            platforms.append(f"Twitch: {self._session.display_name}")
+        if self._kick_connected and self._kick_session:
+            platforms.append(f"Kick: {self._kick_session.display_name}")
+        if self._youtube_connected and self._youtube_session:
+            platforms.append(f"YouTube: {self._youtube_session.username}")
+        elif youtube_refreshing and self._youtube_session:
+            platforms.append(f"YouTube: {self._youtube_session.username} (refreshing...)")
+        elif self._youtube_not_streaming and self._youtube_session:
+            platforms.append(f"YouTube: {self._youtube_session.username} (not streaming)")
+
+        label = " | ".join(platforms) if platforms else "Not connected"
         self._streamer_label.setText(label)
     
     def _on_twitch_status_changed(self, message: str) -> None:
         if "Connected to" in message:
             self._twitch_connected = True
+            self._update_connection_label()
+    
+    def _on_kick_status_changed(self, message: str) -> None:
+        if "Connected to" in message:
+            self._kick_connected = True
             self._update_connection_label()
     
     def _on_youtube_status_changed(self, message: str) -> None:
@@ -729,6 +765,11 @@ class MainWindow(QMainWindow):
         if self._chat_worker:
             self._chat_worker.stop()
         self._chat_worker = None
+
+        if self._kick_chat_worker:
+            self._kick_chat_worker.stop()
+        self._kick_chat_worker = None
+        self._kick_connected = False
         
         if self._youtube_chat_worker:
             self._youtube_chat_worker.stop()
@@ -736,6 +777,10 @@ class MainWindow(QMainWindow):
 
     def _on_chat_failed(self, message: str) -> None:
         pass
+
+    def _on_kick_chat_failed(self, message: str) -> None:
+        self._kick_connected = False
+        self._update_connection_label()
 
     def _on_youtube_chat_failed(self, message: str) -> None:
         self._youtube_connected = False
@@ -767,6 +812,8 @@ class MainWindow(QMainWindow):
                 platform_icon = self._youtube_icon
             elif entry.platform == "twitch":
                 platform_icon = self._twitch_icon
+            elif entry.platform == "kick":
+                platform_icon = self._kick_icon
             
             widget = QueueListItemWidget(text, platform_icon, entry.difficulty)
             item.setSizeHint(widget.sizeHint())
@@ -1081,6 +1128,8 @@ class MainWindow(QMainWindow):
             self,
         )
         dialog.logged_out.connect(self._on_logged_out)
+        dialog.kick_logged_in.connect(self._on_kick_logged_in)
+        dialog.kick_logged_out.connect(self._on_kick_logged_out)
         dialog.youtube_updated.connect(lambda: self._start_chat(self._session))
         dialog.twitch_logged_in.connect(self._on_twitch_logged_in)
         dialog.queue_command_changed.connect(self._on_queue_command_changed)
@@ -1093,6 +1142,18 @@ class MainWindow(QMainWindow):
 
     def _on_twitch_logged_in(self, session: TwitchSession) -> None:
         self._apply_session(session)
+
+    def _on_kick_logged_in(self, session) -> None:
+        self._kick_session = session
+        self._start_chat(self._session)
+
+    def _on_kick_logged_out(self) -> None:
+        self._kick_session = None
+        if self._kick_chat_worker:
+            self._kick_chat_worker.stop()
+        self._kick_chat_worker = None
+        self._kick_connected = False
+        self._update_connection_label()
 
     def _on_logged_out(self) -> None:
         self._stop_chat()

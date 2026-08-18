@@ -14,7 +14,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from hwgdreqs.login_worker import DeviceLoginWorker
+from hwgdreqs.login_worker import DeviceLoginWorker, KickLoginWorker
 from hwgdreqs.twitch_auth import TwitchSession
 from hwgdreqs.youtube_auth import YoutubeSession
 
@@ -168,15 +168,94 @@ class TwitchLoginDialog(QDialog):
         QMessageBox.warning(self, "Twitch Login", message)
 
 
+class KickLoginDialog(QDialog):
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("Kick Login (BETA)")
+        self.setModal(True)
+        self.setMinimumSize(420, 200)
+        self._session = None
+        self._worker: KickLoginWorker | None = None
+
+        layout = QVBoxLayout(self)
+
+        self._intro = QLabel(
+            "Connect your Kick account to listen for level requests in chat.\n"
+            "Clicking the button below will open Kick in your browser to authorize the app.\n"
+            "This is still in BETA, means ONLY reads chat and thats it"
+        )
+        self._intro.setWordWrap(True)
+        layout.addWidget(self._intro)
+
+        self._status = QLabel("Click below to start Kick Login (BETA).")
+        self._status.setWordWrap(True)
+        self._status.setMinimumHeight(48)
+        layout.addWidget(self._status)
+
+        button_row = QHBoxLayout()
+        self._login_btn = QPushButton("Start Kick Login (BETA)")
+        self._login_btn.clicked.connect(self._start_login)
+        button_row.addWidget(self._login_btn)
+
+        self._open_btn = QPushButton("Re-open Kick")
+        self._open_btn.setEnabled(False)
+        self._open_btn.clicked.connect(self._reopen_browser)
+        button_row.addWidget(self._open_btn)
+
+        layout.addLayout(button_row)
+
+        self._auth_url: str = ""
+
+    @property
+    def session(self):
+        return self._session
+
+    def _start_login(self) -> None:
+        self._login_btn.setEnabled(False)
+        self._open_btn.setEnabled(False)
+        self._status.setText("Initializing…")
+        self._worker = KickLoginWorker(self)
+        self._worker.auth_url_ready.connect(self._on_auth_url_ready)
+        self._worker.auth_status.connect(self._status.setText)
+        self._worker.login_complete.connect(self._on_login_complete)
+        self._worker.login_failed.connect(self._on_login_failed)
+        self._worker.start()
+
+    def _on_auth_url_ready(self, url: str) -> None:
+        self._auth_url = url
+        self._open_btn.setEnabled(True)
+        webbrowser.open(url)
+        self._status.setText(
+            "Your browser has been opened to the Kick authorization page.\n"
+            "Approve the login there, then this dialog will close automatically."
+        )
+
+    def _reopen_browser(self) -> None:
+        if self._auth_url:
+            webbrowser.open(self._auth_url)
+
+    def _on_login_complete(self, session) -> None:
+        self._session = session
+        self._status.setText(f"Logged in as {session.display_name}.")
+        self.accept()
+
+    def _on_login_failed(self, message: str) -> None:
+        self._login_btn.setEnabled(True)
+        self._open_btn.setEnabled(False)
+        self._status.setText(message)
+        QMessageBox.warning(self, "Kick Login (BETA)", message)
+
+
 class LoginDialog(QDialog):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self.setWindowTitle("Login")
         self.setModal(True)
-        self.setMinimumSize(450, 300)
+        self.setMinimumSize(450, 340)
 
         self._session: TwitchSession | None = None
         self._youtube_session: YoutubeSession | None = None
+        self._kick_session = None
 
         layout = QVBoxLayout(self)
 
@@ -192,6 +271,12 @@ class LoginDialog(QDialog):
         self.twitch_btn = QPushButton("Twitch Login")
         self.twitch_btn.clicked.connect(self._do_twitch_login)
         layout.addWidget(self.twitch_btn)
+
+        layout.addSpacing(8)
+
+        self.kick_btn = QPushButton("Kick Login (BETA)")
+        self.kick_btn.clicked.connect(self._do_kick_login)
+        layout.addWidget(self.kick_btn)
 
         layout.addSpacing(10)
 
@@ -236,6 +321,10 @@ class LoginDialog(QDialog):
     def youtube_session(self) -> YoutubeSession | None:
         return self._youtube_session
 
+    @property
+    def kick_session(self):
+        return self._kick_session
+
     def _do_twitch_login(self) -> None:
         twitch_dialog = TwitchLoginDialog(parent=None)
         twitch_dialog.setWindowModality(Qt.WindowModality.ApplicationModal)
@@ -247,10 +336,22 @@ class LoginDialog(QDialog):
         self.raise_()
         self.activateWindow()
 
+    def _do_kick_login(self) -> None:
+        kick_dialog = KickLoginDialog(parent=None)
+        kick_dialog.setWindowModality(Qt.WindowModality.ApplicationModal)
+        if kick_dialog.exec() == QDialog.DialogCode.Accepted:
+            self._kick_session = kick_dialog.session
+            self.kick_btn.setText("Kick Logged In")
+            self.kick_btn.setEnabled(False)
+            self._check_done_state()
+        self.raise_()
+        self.activateWindow()
+
     def _check_done_state(self) -> None:
         has_twitch = self._session is not None
+        has_kick = self._kick_session is not None
         has_yt = bool(self.yt_input.text().strip())
-        self.done_btn.setEnabled(has_twitch or has_yt)
+        self.done_btn.setEnabled(has_twitch or has_yt or has_kick)
 
     def _on_done(self) -> None:
         yt_username = self.yt_input.text().strip()

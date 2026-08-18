@@ -28,7 +28,7 @@ def get_aredl_position(level_id):
             _aredl_cache = {}
     return _aredl_cache.get(str(level_id))
 
-def _make_handler(queue: QueueManager, session: TwitchSession | None = None, chat_callback=None):
+def _make_handler(queue: QueueManager, session: TwitchSession | None = None, chat_callback=None, api_server=None):
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, format: str, *args) -> None:
             return
@@ -79,6 +79,27 @@ def _make_handler(queue: QueueManager, session: TwitchSession | None = None, cha
 
         def do_GET(self) -> None:
             path = urlparse(self.path).path
+
+            if path == "/callback":
+                params = self._params()
+                code = params.get("code")
+                state = params.get("state")
+                
+                error_msg = None
+                if api_server and api_server._kick_callback:
+                    error_msg = api_server._kick_callback(code, state)
+                
+                if error_msg:
+                    self.send_response(400)
+                    self.send_header("Content-Type", "text/html; charset=utf-8")
+                    self.end_headers()
+                    self.wfile.write(f"<html><body><h1>Login failed</h1><p>{error_msg}</p></body></html>".encode("utf-8"))
+                else:
+                    self.send_response(200)
+                    self.send_header("Content-Type", "text/html; charset=utf-8")
+                    self.end_headers()
+                    self.wfile.write(b"<html><body><h1>Login successful!</h1><p>You can close this window now.</p></body></html>")
+                return
 
             if path == "/swagger" or path == "/swagger/":
                 try:
@@ -377,8 +398,13 @@ def _make_handler(queue: QueueManager, session: TwitchSession | None = None, cha
     return Handler
 
 
+_active_api_server: ApiServer | None = None
+
+
 class ApiServer:
     def __init__(self, queue: QueueManager) -> None:
+        global _active_api_server
+        _active_api_server = self
         self._queue = queue
         self._local_httpd: ThreadingHTTPServer | None = None
         self._local_thread: threading.Thread | None = None
@@ -389,6 +415,10 @@ class ApiServer:
         self._host_to_network: bool = False
         self._network_port: int = 0
         self._chat_callback = None
+        self._kick_callback = None
+
+    def set_kick_callback(self, callback) -> None:
+        self._kick_callback = callback
 
     def set_chat_callback(self, callback) -> None:
         self._chat_callback = callback
@@ -419,7 +449,7 @@ class ApiServer:
         if self._local_thread and self._local_thread.is_alive():
             success = True
         else:
-            handler = _make_handler(self._queue, self._session, self._dispatch_chat_callback)
+            handler = _make_handler(self._queue, self._session, self._dispatch_chat_callback, self)
             try:
                 self._local_httpd = ThreadingHTTPServer(("127.0.0.1", self._local_port), handler)
                 self._local_thread = threading.Thread(target=self._local_httpd.serve_forever, daemon=True)
@@ -431,7 +461,7 @@ class ApiServer:
         # network server if on
         if self._host_to_network:
             if not (self._network_thread and self._network_thread.is_alive()):
-                handler = _make_handler(self._queue, self._session, self._dispatch_chat_callback)
+                handler = _make_handler(self._queue, self._session, self._dispatch_chat_callback, self)
                 try:
                     self._network_httpd = ThreadingHTTPServer(("0.0.0.0", self._network_port), handler)
                     self._network_thread = threading.Thread(target=self._network_httpd.serve_forever, daemon=True)

@@ -483,6 +483,13 @@ class HistoryListItemWidget(QWidget):
                 plat_pixmap = QPixmap(str(platform_icon_path))
                 self.platform_icon_label.setPixmap(plat_pixmap.scaled(24, 24))
                 layout.addWidget(self.platform_icon_label)
+        elif entry.platform == "kick":
+            platform_icon_path = asset_path("kick.svg")
+            if platform_icon_path.exists():
+                self.platform_icon_label = QLabel()
+                plat_pixmap = QPixmap(str(platform_icon_path))
+                self.platform_icon_label.setPixmap(plat_pixmap.scaled(24, 24))
+                layout.addWidget(self.platform_icon_label)
     
     def get_entry(self):
         return self._entry
@@ -1003,6 +1010,8 @@ class SettingsDialog(QDialog):
     logged_out = Signal()
     youtube_updated = Signal()
     twitch_logged_in = Signal(object)
+    kick_logged_in = Signal(object)
+    kick_logged_out = Signal()
     queue_command_changed = Signal(bool)
 
     def __init__(self, queue: QueueManager, streamer_name: str, cloudflared, parent=None) -> None:
@@ -1309,6 +1318,31 @@ class SettingsDialog(QDialog):
 
         youtube_layout.addStretch()
         tabs.addTab(youtube_tab, "YouTube")
+
+        # ── Kick tab ──────────────────────────────────────────────────────────
+        kick_tab = QWidget()
+        kick_layout = QVBoxLayout(kick_tab)
+
+        from hwgdreqs.kick_auth import load_session as load_kick_session
+        self._kick_session = load_kick_session()
+
+        if self._kick_session:
+            kick_layout.addWidget(
+                QLabel(f"Kick Status: Logged in as {self._kick_session.display_name}")
+            )
+            kick_layout.addSpacing(15)
+            kick_logout_btn = QPushButton("Log Out from Kick")
+            kick_logout_btn.clicked.connect(self._logout_kick)
+            kick_layout.addWidget(kick_logout_btn)
+        else:
+            kick_layout.addWidget(QLabel("Kick Status: Not connected"))
+            kick_layout.addSpacing(15)
+            kick_login_btn = QPushButton("Login with Kick")
+            kick_login_btn.clicked.connect(self._login_kick)
+            kick_layout.addWidget(kick_login_btn)
+
+        kick_layout.addStretch()
+        tabs.addTab(kick_tab, "Kick")
 
         self._api_tab = ApiTab(queue, cloudflared)
         tabs.addTab(self._api_tab, "API")
@@ -1640,6 +1674,30 @@ class SettingsDialog(QDialog):
             return
         clear_auth()
         self.logged_out.emit()
+        self.accept()
+
+    def _login_kick(self) -> None:
+        from hwgdreqs.login_dialog import KickLoginDialog
+        dialog = KickLoginDialog(self)
+        if dialog.exec() != QDialog.DialogCode.Accepted or not dialog.session:
+            return
+        self.kick_logged_in.emit(dialog.session)
+        self.accept()
+
+    def _logout_kick(self) -> None:
+        answer = QMessageBox.question(
+            self,
+            "Log Out",
+            "Log out from Kick? You can log in again immediately.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        from hwgdreqs.config import kick_token_file
+        path = kick_token_file()
+        if path.exists():
+            path.unlink()
+        self.kick_logged_out.emit()
         self.accept()
 
     def _connect_youtube(self) -> None:

@@ -133,6 +133,7 @@ class QueuePopoutWindow(QMainWindow):
 
         self._twitch_icon_path = "twitch.svg"
         self._youtube_icon_path = "youtube.svg"
+        self._kick_icon_path = "kick.svg"
 
         self._queue.add_listener(self.refresh)
         self.refresh()
@@ -151,6 +152,8 @@ class QueuePopoutWindow(QMainWindow):
                 platform_icon_path = self._youtube_icon_path
             elif entry.platform == "twitch":
                 platform_icon_path = self._twitch_icon_path
+            elif entry.platform == "kick":
+                platform_icon_path = self._kick_icon_path
 
             widget = PopoutQueueItemWidget(text, platform_icon_path, entry.difficulty, scale)
 

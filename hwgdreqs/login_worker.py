@@ -41,3 +41,45 @@ class DeviceLoginWorker(QThread):
             self.login_failed.emit(str(exc))
         except Exception as exc:
             self.login_failed.emit(f"Unexpected error: {exc}")
+
+
+class KickLoginWorker(QThread):
+    auth_url_ready = Signal(str)
+    auth_status = Signal(str)
+    login_complete = Signal(object)
+    login_failed = Signal(str)
+
+    CALLBACK_PORT = 6767
+    CALLBACK_TIMEOUT = 300  # seconds
+
+    def run(self) -> None:
+        from hwgdreqs.kick_auth import (
+            KickAuthError,
+            start_pkce_flow,
+            wait_for_callback,
+            exchange_code,
+            session_from_token,
+        )
+        try:
+            self.auth_status.emit("Building Kick authorization URL…")
+            auth_url, code_verifier, state = start_pkce_flow(port=self.CALLBACK_PORT)
+            self.auth_url_ready.emit(auth_url)
+            self.auth_status.emit(
+                "Waiting for Kick authorization in your browser… "
+                "(approve the login, then come back)"
+            )
+            code = wait_for_callback(
+                port=self.CALLBACK_PORT,
+                timeout=self.CALLBACK_TIMEOUT,
+                expected_state=state,
+            )
+            self.auth_status.emit("Exchanging authorization code…")
+            token_data = exchange_code(code, code_verifier, port=self.CALLBACK_PORT)
+            self.auth_status.emit("Fetching Kick profile…")
+            session = session_from_token(token_data)
+            self.login_complete.emit(session)
+        except KickAuthError as exc:
+            self.login_failed.emit(str(exc))
+        except Exception as exc:
+            self.login_failed.emit(f"Unexpected error: {exc}")
+

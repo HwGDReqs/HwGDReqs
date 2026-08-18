@@ -5,3 +5,5 @@ pytchat
 cryptography
 keyring
 qrcode
+curl_cffi
+websockets
