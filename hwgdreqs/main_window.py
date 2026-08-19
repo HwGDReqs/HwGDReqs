@@ -618,6 +618,7 @@ class MainWindow(QMainWindow):
     def _start_chat(self, session: TwitchSession | None) -> None:
         self._stop_chat()
         self._twitch_connected = False
+        self._kick_connected = False
         self._youtube_connected = False
         self._youtube_not_streaming = False
         self._youtube_refreshing = False
@@ -658,36 +659,37 @@ class MainWindow(QMainWindow):
                 self._twitch_chat_window._can_send = can_send
                 self._twitch_chat_window._can_ban = can_ban
 
-            def _api_requests_chat_callback(enabled: bool) -> None:
-                if self._chat_worker and self._session and self._session.chat_edit_scope:
-                    if enabled:
-                        self._chat_worker._maybe_send("requests_toggle", f"[HwGDReqs] @{self._session.login} has enabled requests, any level sent from now on will be added")
-                    else:
-                        self._chat_worker._maybe_send("requests_toggle", f"[HwGDReqs] @{self._session.login} has disabled requests, any level sent from now on will not be added")
-            self._api_server.set_chat_callback(_api_requests_chat_callback)
-        else:
-            self._api_server.set_chat_callback(None)
+        self._api_server.set_chat_callback(self._api_requests_chat_callback)
 
         if self._kick_session:
             from hwgdreqs.kick_chat import KickChatWorker
-            self._kick_chat_worker = KickChatWorker(self._kick_session, self._queue)
+            self._kick_chat_worker = KickChatWorker(
+                self._kick_session,
+                self._queue,
+                queue_command_enabled=get_queue_command_enabled(),
+            )
             self._kick_chat_worker.status_changed.connect(self._on_kick_status_changed)
             self._kick_chat_worker.connection_failed.connect(self._on_kick_chat_failed)
-            self._kick_chat_worker.auth_failed.connect(lambda: None)  # no re-login for Kick yet
-            self._kick_chat_worker.message_received.connect(self._on_twitch_message_received)
+            self._kick_chat_worker.auth_failed.connect(self._on_kick_chat_auth_failed)
+            self._kick_chat_worker.message_received.connect(self._on_kick_message_received)
             self._kick_chat_worker.start()
 
+            can_send = bool(self._kick_session.chat_edit_scope)
+            can_ban = bool(self._kick_session.channel_moderate_enabled)
             if self._kick_chat_window is None:
                 self._kick_chat_window = ChatWindow(
                     platform="kick",
-                    session=None,
+                    session=self._kick_session,
                     chat_worker=self._kick_chat_worker,
-                    can_send=True,
-                    can_ban=True,
+                    can_send=can_send,
+                    can_ban=can_ban,
                     parent=None,
                 )
             else:
+                self._kick_chat_window._session = self._kick_session
                 self._kick_chat_window._chat_worker = self._kick_chat_worker
+                self._kick_chat_window._can_send = can_send
+                self._kick_chat_window._can_ban = can_ban
         
         if self._youtube_session:
             self._youtube_refreshing = True
@@ -846,7 +848,7 @@ class MainWindow(QMainWindow):
             self._clear_by_requester_action.setText(f'From requester "{entry.requester}"')
             self._clear_by_author_action.setText(f'From author "{entry.author}"')
             self._update_details(entry)
-            if entry.platform == "twitch":
+            if entry.platform in ("twitch", "kick"):
                 self._ban_requester_btn.show()
             else:
                 self._ban_requester_btn.hide()
@@ -1068,33 +1070,46 @@ class MainWindow(QMainWindow):
             return
         self._queue.blacklist_author(entry.author)
 
+    def _platform_ban_capability(self, platform: str):
+        if platform == "twitch":
+            from hwgdreqs.twitch_auth import get_channel_moderate_enabled, ban_twitch_user
+            if not self._session or not get_channel_moderate_enabled():
+                return None
+            return self._session, ban_twitch_user, "Twitch"
+        if platform == "kick":
+            from hwgdreqs.kick_auth import ban_kick_user
+            if not self._kick_session or not self._kick_session.channel_moderate_enabled:
+                return None
+            return self._kick_session, ban_kick_user, "Kick"
+        return None
+
     def _ban_requester(self) -> None:
         entry = self._selected_entry()
-        if not entry or entry.platform != "twitch":
+        if not entry:
             return
 
-        session = self._session
-        if not session:
-            QMessageBox.warning(self, "Ban Requester", "No active Twitch session found.")
+        capability = self._platform_ban_capability(entry.platform)
+        if capability is None:
+            if entry.platform in ("twitch", "kick"):
+                platform_label = "Twitch" if entry.platform == "twitch" else "Kick"
+                QMessageBox.warning(
+                    self,
+                    "Ban Requester",
+                    f"You must enable the option 'want to moderate chat to ban a requester...' in {platform_label} settings (and log in with it) to use this feature."
+                )
+            else:
+                QMessageBox.warning(self, "Ban Requester", f"Banning is not supported for the '{entry.platform}' platform.")
             return
 
+        session, ban_fn, label = capability
         if entry.requester.lower() == session.login.lower():
             QMessageBox.warning(self, "Ban Requester Failed", "SON you cant ban yourself😭")
-            return
-
-        from hwgdreqs.twitch_auth import get_channel_moderate_enabled, ban_twitch_user
-        if not get_channel_moderate_enabled():
-            QMessageBox.warning(
-                self,
-                "Ban Requester",
-                "You must enable the option 'want to moderate chat to ban a requester...' in Twitch settings (and log in with it) to use this feature."
-            )
             return
 
         reply = QMessageBox.question(
             self,
             "Ban Requester",
-            f"Are you sure you want to ban '{entry.requester}' from your Twitch channel?",
+            f"Are you sure you want to ban '{entry.requester}' from your {label} channel?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
         if reply != QMessageBox.StandardButton.Yes:
@@ -1102,23 +1117,32 @@ class MainWindow(QMainWindow):
 
         QGuiApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
-            error = ban_twitch_user(session, entry.requester)
+            error = ban_fn(session, entry.requester)
         finally:
             QGuiApplication.restoreOverrideCursor()
 
         if error:
             QMessageBox.warning(self, "Ban Requester Failed", f"Could not ban {entry.requester}:\n{error}")
         else:
-            QMessageBox.information(self, "Ban Requester", f"Successfully banned '{entry.requester}' on Twitch.")
+            QMessageBox.information(self, "Ban Requester", f"Successfully banned '{entry.requester}' on {label}.")
 
     def _toggle_requests(self) -> None:
         self._queue.requests_enabled = not self._queue.requests_enabled
         self._toggle_requests_btn.setText("Disable requests" if self._queue.requests_enabled else "Enable requests")
+        self._api_requests_chat_callback(self._queue.requests_enabled)
+
+    def _api_requests_chat_callback(self, enabled: bool) -> None:
         if self._chat_worker and self._session and self._session.chat_edit_scope:
-            if self._queue.requests_enabled:
+            if enabled:
                 self._chat_worker._maybe_send("requests_toggle", f"[HwGDReqs] @{self._session.login} has enabled requests, any level sent from now on will be added")
             else:
                 self._chat_worker._maybe_send("requests_toggle", f"[HwGDReqs] @{self._session.login} has disabled requests, any level sent from now on will not be added")
+
+        if self._kick_chat_worker and self._kick_session and self._kick_session.chat_edit_scope:
+            if enabled:
+                self._kick_chat_worker._maybe_send("requests_toggle", f"[HwGDReqs] @{self._kick_session.login} has enabled requests, any level sent from now on will be added")
+            else:
+                self._kick_chat_worker._maybe_send("requests_toggle", f"[HwGDReqs] @{self._kick_session.login} has disabled requests, any level sent from now on will not be added")
 
     def _open_settings(self) -> None:
         dialog = SettingsDialog(
@@ -1227,8 +1251,6 @@ class MainWindow(QMainWindow):
 
         self._list.setCurrentItem(item)
 
-        from hwgdreqs.twitch_auth import get_channel_moderate_enabled
-
         menu = QMenu(self)
 
         copy_id_act = QAction("copy id", self)
@@ -1280,18 +1302,16 @@ class MainWindow(QMainWindow):
         bl_del_act.triggered.connect(lambda: self._blacklist_requester_and_delete_levels(entry.requester))
         menu.addAction(bl_del_act)
 
-        is_twitch = (entry.platform == "twitch")
-        has_moderation = get_channel_moderate_enabled()
-        is_twitch_mod = is_twitch and has_moderation
+        is_bannable = self._platform_ban_capability(entry.platform) is not None
 
-        ban_del_act = QAction("Ban Requester + Delete All Their Levels(twitch only+moderation on)", self)
-        ban_del_act.setEnabled(is_twitch_mod)
-        ban_del_act.triggered.connect(lambda: self._ban_requester_and_delete_levels(entry.requester))
+        ban_del_act = QAction("Ban Requester + Delete All Their Levels (Twitch/Kick, moderation on)", self)
+        ban_del_act.setEnabled(is_bannable)
+        ban_del_act.triggered.connect(lambda: self._ban_requester_and_delete_levels(entry.requester, entry.platform))
         menu.addAction(ban_del_act)
 
-        ban_bl_del_act = QAction("Ban+blacklist Requester + Delete All Their Levels(twitch only+moderation on)", self)
-        ban_bl_del_act.setEnabled(is_twitch_mod)
-        ban_bl_del_act.triggered.connect(lambda: self._ban_blacklist_requester_and_delete_levels(entry.requester))
+        ban_bl_del_act = QAction("Ban+blacklist Requester + Delete All Their Levels (Twitch/Kick, moderation on)", self)
+        ban_bl_del_act.setEnabled(is_bannable)
+        ban_bl_del_act.triggered.connect(lambda: self._ban_blacklist_requester_and_delete_levels(entry.requester, entry.platform))
         menu.addAction(ban_bl_del_act)
 
         menu.exec(self._list.mapToGlobal(pos))
@@ -1344,11 +1364,12 @@ class MainWindow(QMainWindow):
             self._queue.remove_levels_by_requester(requester)
             self.statusBar().showMessage(f"Blacklisted '{requester}' and deleted their levels")
 
-    def _ban_requester_and_delete_levels(self, requester: str) -> None:
-        session = self._session
-        if not session:
-            QMessageBox.warning(self, "Ban Requester Failed", "No active Twitch session found.")
+    def _ban_requester_and_delete_levels(self, requester: str, platform: str = "twitch") -> None:
+        capability = self._platform_ban_capability(platform)
+        if capability is None:
+            QMessageBox.warning(self, "Ban Requester Failed", f"No active moderatable {platform.title()} session found.")
             return
+        session, ban_fn, label = capability
 
         if requester.lower() == session.login.lower():
             QMessageBox.warning(self, "Ban Requester Failed", "SON you cant ban yourself😭")
@@ -1357,7 +1378,7 @@ class MainWindow(QMainWindow):
         reply = QMessageBox.question(
             self,
             "Ban Requester and Delete Levels",
-            f"Are you sure you want to ban '{requester}' on Twitch and delete all their levels?",
+            f"Are you sure you want to ban '{requester}' on {label} and delete all their levels?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
         if reply != QMessageBox.StandardButton.Yes:
@@ -1365,8 +1386,7 @@ class MainWindow(QMainWindow):
 
         QGuiApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
-            from hwgdreqs.twitch_auth import ban_twitch_user
-            error = ban_twitch_user(session, requester)
+            error = ban_fn(session, requester)
         finally:
             QGuiApplication.restoreOverrideCursor()
 
@@ -1376,11 +1396,12 @@ class MainWindow(QMainWindow):
             self._queue.remove_levels_by_requester(requester)
             QMessageBox.information(self, "Ban Requester", f"Successfully banned '{requester}' and deleted all their levels.")
 
-    def _ban_blacklist_requester_and_delete_levels(self, requester: str) -> None:
-        session = self._session
-        if not session:
-            QMessageBox.warning(self, "Ban & Blacklist Requester Failed", "No active Twitch session found.")
+    def _ban_blacklist_requester_and_delete_levels(self, requester: str, platform: str = "twitch") -> None:
+        capability = self._platform_ban_capability(platform)
+        if capability is None:
+            QMessageBox.warning(self, "Ban & Blacklist Requester Failed", f"No active moderatable {platform.title()} session found.")
             return
+        session, ban_fn, label = capability
 
         if requester.lower() == session.login.lower():
             QMessageBox.warning(self, "Ban & Blacklist Requester Failed", "SON you cant ban yourself😭")
@@ -1389,7 +1410,7 @@ class MainWindow(QMainWindow):
         reply = QMessageBox.question(
             self,
             "Ban & Blacklist Requester",
-            f"Are you sure you want to ban '{requester}' on Twitch, blacklist them locally, and delete all their levels?",
+            f"Are you sure you want to ban '{requester}' on {label}, blacklist them locally, and delete all their levels?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
         if reply != QMessageBox.StandardButton.Yes:
@@ -1397,8 +1418,7 @@ class MainWindow(QMainWindow):
 
         QGuiApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
-            from hwgdreqs.twitch_auth import ban_twitch_user
-            error = ban_twitch_user(session, requester)
+            error = ban_fn(session, requester)
         finally:
             QGuiApplication.restoreOverrideCursor()
 
@@ -1418,6 +1438,30 @@ class MainWindow(QMainWindow):
         if self._twitch_chat_window:
             self._twitch_chat_window.on_message(username, message)
 
+    def _on_kick_message_received(self, username: str, message: str) -> None:
+        if self._kick_chat_window:
+            self._kick_chat_window.on_message(username, message)
+
+    def _on_kick_chat_auth_failed(self) -> None:
+        from hwgdreqs.kick_auth import refresh_session as refresh_kick_session
+
+        if not self._kick_session:
+            return
+
+        refreshed = refresh_kick_session(self._kick_session)
+        if refreshed:
+            self._kick_session = refreshed
+            if self._kick_chat_window:
+                self._kick_chat_window._session = refreshed
+            return
+
+        self._kick_session = None
+        self._kick_connected = False
+        if self._kick_chat_worker:
+            self._kick_chat_worker.stop()
+        self._kick_chat_worker = None
+        self._update_connection_label()
+
     def _on_youtube_message_received(self, username: str, message: str) -> None:
         if self._youtube_chat_window:
             self._youtube_chat_window.on_message(username, message)
@@ -1429,6 +1473,11 @@ class MainWindow(QMainWindow):
         twitch_act.setEnabled(self._twitch_chat_window is not None)
         twitch_act.triggered.connect(self._open_twitch_chat)
         menu.addAction(twitch_act)
+
+        kick_act = QAction("Show Kick Chat", self)
+        kick_act.setEnabled(self._kick_chat_window is not None)
+        kick_act.triggered.connect(self._open_kick_chat)
+        menu.addAction(kick_act)
 
         youtube_act = QAction("Show YouTube Chat", self)
         youtube_act.setEnabled(self._youtube_chat_window is not None)
@@ -1445,6 +1494,13 @@ class MainWindow(QMainWindow):
         self._twitch_chat_window.raise_()
         self._twitch_chat_window.activateWindow()
 
+    def _open_kick_chat(self) -> None:
+        if self._kick_chat_window is None:
+            return
+        self._kick_chat_window.show()
+        self._kick_chat_window.raise_()
+        self._kick_chat_window.activateWindow()
+
     def _open_youtube_chat(self) -> None:
         if self._youtube_chat_window is None:
             return
@@ -1459,6 +1515,8 @@ class MainWindow(QMainWindow):
         # kill chat window
         if self._twitch_chat_window:
             self._twitch_chat_window.close()
+        if self._kick_chat_window:
+            self._kick_chat_window.close()
         if self._youtube_chat_window:
             self._youtube_chat_window.close()
         # kill popout window

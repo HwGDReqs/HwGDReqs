@@ -73,20 +73,29 @@ class _ChatView(QPlainTextEdit):
             self.message_right_clicked.emit(username, text, self.mapToGlobal(pos))
 
 
+_PLATFORM_TITLES = {
+    "twitch": "Twitch Chat",
+    "kick": "Kick Chat",
+    "youtube": "YouTube Chat",
+}
+
+_WRITE_CAPABLE_PLATFORMS = ("twitch", "kick")
+
+
 class ChatWindow(QDialog):
     """
-    Non-modal dialog showing Twitch or YouTube live chat.
+    Non-modal dialog showing Twitch, Kick, or YouTube live chat.
     Create it (hidden) as soon as the worker starts, so it buffers from the beginning.
     Call .on_message() to append incoming messages.
     Call .show()/.raise_() to make it visible to the user.
 
     Parameters
     ----------
-    platform : "twitch" | "youtube"
-    session  : TwitchSession | None   (needed to send/ban on Twitch)
+    platform : "twitch" | "kick" | "youtube"
+    session  : TwitchSession | KickSession | None   (needed to send/ban on Twitch/Kick)
     chat_worker : worker object with _send_chat_message()
-    can_send : bool  – True when Twitch chat:edit scope is active
-    can_ban  : bool  – True when Twitch moderation scope is active
+    can_send : bool  – True when the platform's chat-write scope is active
+    can_ban  : bool  – True when the platform's moderation scope is active
     parent   : QWidget | None
     child    : no he's an orphan
     """
@@ -107,7 +116,7 @@ class ChatWindow(QDialog):
         self._can_send = can_send
         self._can_ban = can_ban
 
-        title = "Twitch Chat" if platform == "twitch" else "YouTube Chat"
+        title = _PLATFORM_TITLES.get(platform, f"{platform.title()} Chat")
         self.setWindowTitle(title)
         self.resize(460, 540)
         self.setWindowFlags(
@@ -127,8 +136,8 @@ class ChatWindow(QDialog):
         self._view.message_right_clicked.connect(self._on_message_right_clicked)
         layout.addWidget(self._view, stretch=1)
 
-        # Send bar. Twitch only, when chat:edit scope is on
-        if platform == "twitch" and can_send:
+        # Send bar. Twitch/Kick only, when chat-write scope is on
+        if platform in _WRITE_CAPABLE_PLATFORMS and can_send:
             send_layout = QHBoxLayout()
             self._input = QLineEdit()
             self._input.setPlaceholderText("Type your message to chat here (\\n for new lines)")
@@ -167,7 +176,7 @@ class ChatWindow(QDialog):
         self.on_message(sender, message)
 
     def _on_message_right_clicked(self, username: str, text: str, global_pos: QPoint) -> None:
-        if self._platform != "twitch" or not self._can_ban:
+        if self._platform not in _WRITE_CAPABLE_PLATFORMS or not self._can_ban:
             return
 
         menu = QMenu(self)
@@ -180,16 +189,17 @@ class ChatWindow(QDialog):
         if not self._session:
             return
         from PySide6.QtWidgets import QMessageBox
-        from hwgdreqs.twitch_auth import ban_twitch_user
 
         if username.lower() == self._session.login.lower():
             QMessageBox.warning(self, "Ban User", "SON you cant ban yourself😭")  # OG
             return
 
+        platform_label = _PLATFORM_TITLES.get(self._platform, self._platform.title()).replace(" Chat", "")
+
         reply = QMessageBox.question(
             self,
             "Ban User",
-            f"Are you sure you want to ban '{username}' from your Twitch channel?",
+            f"Are you sure you want to ban '{username}' from your {platform_label} channel?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
         if reply != QMessageBox.StandardButton.Yes:
@@ -199,11 +209,18 @@ class ChatWindow(QDialog):
         from PySide6.QtCore import Qt
         QGuiApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
-            error = ban_twitch_user(self._session, username)
+            if self._platform == "twitch":
+                from hwgdreqs.twitch_auth import ban_twitch_user
+                error = ban_twitch_user(self._session, username)
+            elif self._platform == "kick":
+                from hwgdreqs.kick_auth import ban_kick_user
+                error = ban_kick_user(self._session, username)
+            else:
+                error = f"Banning is not supported on {platform_label}."
         finally:
             QGuiApplication.restoreOverrideCursor()
 
         if error:
             QMessageBox.warning(self, "Ban Failed", f"Could not ban {username}:\n{error}")
         else:
-            QMessageBox.information(self, "Banned", f"Successfully banned '{username}' on Twitch.")
+            QMessageBox.information(self, "Banned", f"Successfully banned '{username}' on {platform_label}.")
