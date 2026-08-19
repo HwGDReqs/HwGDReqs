@@ -27,7 +27,6 @@ PUSHER_CLUSTER = "us2"
 
 
 def get_channel_info(username: str) -> dict:
-    """Fetch channel metadata from Kick API bypassing Cloudflare."""
     url = f"https://kick.com/api/v2/channels/{username}"
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
@@ -37,8 +36,10 @@ def get_channel_info(username: str) -> dict:
     response = cffi_requests.get(url, headers=headers, impersonate="chrome")
     response.raise_for_status()
     data = response.json()
+    broadcaster_user_id = data.get("user_id") or (data.get("user") or {}).get("id")
     return {
         "chatroom_id": data["chatroom"]["id"],
+        "broadcaster_user_id": int(broadcaster_user_id) if broadcaster_user_id else None,
         "is_live": data.get("livestream") is not None
     }
 
@@ -64,6 +65,7 @@ class KickChatWorker(QObject):
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
         self._chatroom_id: int | None = None
+        self._broadcaster_user_id: int | None = None
         self._ws = None
 
     @property
@@ -96,9 +98,6 @@ class KickChatWorker(QObject):
             except Exception:
                 break
 
-# TODO: fix an api fuckup that returns error: Request blocked by security policy and Reference: 1f0a7105 at banning someone :wilted_rose:
-# TODO: fix kick.com/api/v2/messages/send/{chatroom_id} will become api.kick.com/public/v1/...
-
     async def check_stop(self):
         """Periodically check for thread stop_event and close ws if set."""
         while not self._stop_event.is_set():
@@ -112,6 +111,9 @@ class KickChatWorker(QObject):
         try:
             info = get_channel_info(channel_name)
             self._chatroom_id = info["chatroom_id"]
+            self._broadcaster_user_id = info.get("broadcaster_user_id")
+            if self._broadcaster_user_id is None:
+                logger.warning(f"Could not resolve Kick broadcaster_user_id for #{channel_name}; sending will be disabled")
             self.status_changed.emit(f"Connected to Kick channel: {channel_name}")
         except Exception as e:
             self.connection_failed.emit(f"Failed to fetch Kick channel details: {e}")
@@ -210,7 +212,7 @@ class KickChatWorker(QObject):
             return
         if self._queue.twitch_vip_only and not is_vip and not is_mod and not is_broadcaster:
             return
-
+        
         matches = []
         for m in LEVEL_RE.finditer(message):
             matches.append((m.start(), m.group(1)))
@@ -352,32 +354,36 @@ class KickChatWorker(QObject):
         self._maybe_send("commands_list", msg)
 
     def _send_chat_message(self, message: str) -> None:
-        if not self._chatroom_id or not self._session.access_token:
+        if not self._broadcaster_user_id or not self._session.access_token:
             return
-            
+
         safe_message = message.replace("\r", " ").replace("\n", " ")
         if self._queue.twitch_bot_no_prefix:
             safe_message = safe_message.replace("[HwGDReqs] ", "").replace("[HwGDReqs]", "")
-            
-        url = f"https://kick.com/api/v2/messages/send/{self._chatroom_id}"
+
+        url = "https://api.kick.com/public/v1/chat"
         headers = {
             "Authorization": f"Bearer {self._session.access_token}",
             "Accept": "application/json",
             "Content-Type": "application/json"
         }
         data = {
+            "broadcaster_user_id": self._broadcaster_user_id,
             "content": safe_message,
-            "type": "message"
+            "type": "user",
         }
         try:
-            # We don't necessarily need to bypass CF just to send a message to API, 
-            # but we can use normal requests or cffi_requests
             response = requests.post(url, headers=headers, json=data, timeout=5)
             if response.status_code == 401:
                 logger.warning("Kick access token rejected while sending chat message")
                 self.auth_failed.emit()
-            elif response.status_code >= 400:
+                return
+            if response.status_code >= 400:
                 logger.warning(f"Failed to send Kick chat message: {response.status_code} {response.text}")
+                return
+            body = response.json()
+            if not body.get("data", {}).get("is_sent", False):
+                logger.warning(f"Kick reported the chat message was not sent: {body}")
         except Exception as e:
             logger.warning(f"Failed to send Kick chat message: {e}")
 

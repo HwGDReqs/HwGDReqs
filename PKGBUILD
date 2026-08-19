@@ -1,5 +1,5 @@
 pkgname=hwgdreqs
-pkgver=1.6.1
+pkgver=1.6.2
 pkgrel=1
 pkgdesc="Geometry Dash level request manager for streamers"
 arch=('any')

@@ -182,7 +182,7 @@ class KickLoginDialog(QDialog):
         self._intro = QLabel(
             "Connect your Kick account to listen for level requests in chat.\n"
             "Clicking the button below will open Kick in your browser to authorize the app.\n"
-            "This is still in BETA, means ONLY reads chat and thats it"
+            "This is still non complete, means right now it does reply to added levels, but NO commands support now"
         )
         self._intro.setWordWrap(True)
         layout.addWidget(self._intro)

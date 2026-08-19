@@ -80,6 +80,7 @@ _PLATFORM_TITLES = {
 }
 
 _WRITE_CAPABLE_PLATFORMS = ("twitch", "kick")
+_BAN_CAPABLE_PLATFORMS = ("twitch",)
 
 
 class ChatWindow(QDialog):
@@ -176,7 +177,7 @@ class ChatWindow(QDialog):
         self.on_message(sender, message)
 
     def _on_message_right_clicked(self, username: str, text: str, global_pos: QPoint) -> None:
-        if self._platform not in _WRITE_CAPABLE_PLATFORMS or not self._can_ban:
+        if self._platform not in _BAN_CAPABLE_PLATFORMS or not self._can_ban:
             return
 
         menu = QMenu(self)
@@ -186,7 +187,7 @@ class ChatWindow(QDialog):
         menu.exec(global_pos)
 
     def _ban_user(self, username: str) -> None:
-        if not self._session:
+        if not self._session or self._platform not in _BAN_CAPABLE_PLATFORMS:
             return
         from PySide6.QtWidgets import QMessageBox
 
@@ -209,14 +210,8 @@ class ChatWindow(QDialog):
         from PySide6.QtCore import Qt
         QGuiApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
-            if self._platform == "twitch":
-                from hwgdreqs.twitch_auth import ban_twitch_user
-                error = ban_twitch_user(self._session, username)
-            elif self._platform == "kick":
-                from hwgdreqs.kick_auth import ban_kick_user
-                error = ban_kick_user(self._session, username)
-            else:
-                error = f"Banning is not supported on {platform_label}."
+            from hwgdreqs.twitch_auth import ban_twitch_user
+            error = ban_twitch_user(self._session, username)
         finally:
             QGuiApplication.restoreOverrideCursor()
 

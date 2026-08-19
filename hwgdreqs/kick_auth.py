@@ -341,34 +341,3 @@ def check_kick_user_exists(session: KickSession, target_username: str) -> bool:
     except Exception:
         pass
     return False
-
-
-def ban_kick_user(session: KickSession, target_username: str) -> str | None:
-    ban_url = f"https://kick.com/api/v2/channels/{session.login}/bans"
-    headers = {
-        "Authorization": f"Bearer {session.access_token}",
-        "Content-Type": "application/json",
-        "Accept": "application/json"
-    }
-    body = {
-        "banned_username": target_username,
-        "reason": "Banned from HwGDReqs"
-    }
-    try:
-        response = requests.post(
-            ban_url,
-            headers=headers,
-            json=body,
-            timeout=15,
-        )
-        if response.status_code in (200, 201):
-            return None
-        else:
-            try:
-                err_data = response.json()
-                msg = err_data.get("message", response.text)
-            except Exception:
-                msg = response.text
-            return f"Kick API error: {msg}"
-    except Exception as exc:
-        return f"Failed to perform ban request: {exc}"

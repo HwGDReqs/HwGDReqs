@@ -848,7 +848,7 @@ class MainWindow(QMainWindow):
             self._clear_by_requester_action.setText(f'From requester "{entry.requester}"')
             self._clear_by_author_action.setText(f'From author "{entry.author}"')
             self._update_details(entry)
-            if entry.platform in ("twitch", "kick"):
+            if entry.platform == "twitch":
                 self._ban_requester_btn.show()
             else:
                 self._ban_requester_btn.hide()
@@ -1076,11 +1076,6 @@ class MainWindow(QMainWindow):
             if not self._session or not get_channel_moderate_enabled():
                 return None
             return self._session, ban_twitch_user, "Twitch"
-        if platform == "kick":
-            from hwgdreqs.kick_auth import ban_kick_user
-            if not self._kick_session or not self._kick_session.channel_moderate_enabled:
-                return None
-            return self._kick_session, ban_kick_user, "Kick"
         return None
 
     def _ban_requester(self) -> None:
@@ -1090,12 +1085,11 @@ class MainWindow(QMainWindow):
 
         capability = self._platform_ban_capability(entry.platform)
         if capability is None:
-            if entry.platform in ("twitch", "kick"):
-                platform_label = "Twitch" if entry.platform == "twitch" else "Kick"
+            if entry.platform == "twitch":
                 QMessageBox.warning(
                     self,
                     "Ban Requester",
-                    f"You must enable the option 'want to moderate chat to ban a requester...' in {platform_label} settings (and log in with it) to use this feature."
+                    "You must enable the option 'want to moderate chat to ban a requester...' in Twitch settings (and log in with it) to use this feature."
                 )
             else:
                 QMessageBox.warning(self, "Ban Requester", f"Banning is not supported for the '{entry.platform}' platform.")
@@ -1304,12 +1298,12 @@ class MainWindow(QMainWindow):
 
         is_bannable = self._platform_ban_capability(entry.platform) is not None
 
-        ban_del_act = QAction("Ban Requester + Delete All Their Levels (Twitch/Kick, moderation on)", self)
+        ban_del_act = QAction("Ban Requester + Delete All Their Levels (Twitch only, moderation on)", self)
         ban_del_act.setEnabled(is_bannable)
         ban_del_act.triggered.connect(lambda: self._ban_requester_and_delete_levels(entry.requester, entry.platform))
         menu.addAction(ban_del_act)
 
-        ban_bl_del_act = QAction("Ban+blacklist Requester + Delete All Their Levels (Twitch/Kick, moderation on)", self)
+        ban_bl_del_act = QAction("Ban+blacklist Requester + Delete All Their Levels (Twitch only, moderation on)", self)
         ban_bl_del_act.setEnabled(is_bannable)
         ban_bl_del_act.triggered.connect(lambda: self._ban_blacklist_requester_and_delete_levels(entry.requester, entry.platform))
         menu.addAction(ban_bl_del_act)
@@ -1367,7 +1361,10 @@ class MainWindow(QMainWindow):
     def _ban_requester_and_delete_levels(self, requester: str, platform: str = "twitch") -> None:
         capability = self._platform_ban_capability(platform)
         if capability is None:
-            QMessageBox.warning(self, "Ban Requester Failed", f"No active moderatable {platform.title()} session found.")
+            if platform == "twitch":
+                QMessageBox.warning(self, "Ban Requester Failed", "No active moderatable Twitch session found.")
+            else:
+                QMessageBox.warning(self, "Ban Requester Failed", f"Banning is not supported for the '{platform}' platform.")
             return
         session, ban_fn, label = capability
 
@@ -1399,7 +1396,10 @@ class MainWindow(QMainWindow):
     def _ban_blacklist_requester_and_delete_levels(self, requester: str, platform: str = "twitch") -> None:
         capability = self._platform_ban_capability(platform)
         if capability is None:
-            QMessageBox.warning(self, "Ban & Blacklist Requester Failed", f"No active moderatable {platform.title()} session found.")
+            if platform == "twitch":
+                QMessageBox.warning(self, "Ban & Blacklist Requester Failed", "No active moderatable Twitch session found.")
+            else:
+                QMessageBox.warning(self, "Ban & Blacklist Requester Failed", f"Banning is not supported for the '{platform}' platform.")
             return
         session, ban_fn, label = capability
 
