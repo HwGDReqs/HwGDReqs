@@ -17,6 +17,7 @@ depends=(
     'python-qrcode'
     'python-websockets'
     'python-pip'  # Keep for pip installs
+    'python-hatchling'
 )
 
 makedepends=(
