@@ -32,27 +32,30 @@ _pip_deps=(
     'curl_cffi'
 )
 
-source=("$pkgname-$pkgver.tar.gz::$url/archive/$pkgver.tar.gz")
+# Fixed: GitHub archive extracts to HwGDReqs-1.7.0, not hwgdreqs-1.7.0
+source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/$pkgver.tar.gz")
 sha256sums=('SKIP')
 
 build() {
-    cd "$srcdir/$pkgname-$pkgver"
+    # The extracted directory is HwGDReqs-1.7.0 (capitalization matters!)
+    cd "$srcdir/HwGDReqs-$pkgver"
     python -m build --wheel --no-isolation
 }
 
 package() {
-    cd "$srcdir/$pkgname-$pkgver"
+    cd "$srcdir/HwGDReqs-$pkgver"
     
     # Install the main package
     python -m installer --destdir="$pkgdir" dist/*.whl
     
     # Install pip-only dependencies directly into the package
-    # This uses Python's site-packages in the package directory
     python -m pip install \
         --target="$pkgdir/usr/lib/python$(python -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')/site-packages" \
         --no-deps \
         "${_pip_deps[@]}"
     
-    # Install desktop file
-    install -Dm644 hwgdreqs.desktop "$pkgdir/usr/share/applications/hwgdreqs.desktop"
+    # Install desktop file if it exists
+    if [ -f "hwgdreqs.desktop" ]; then
+        install -Dm644 hwgdreqs.desktop "$pkgdir/usr/share/applications/hwgdreqs.desktop"
+    fi
 }
