@@ -7,7 +7,6 @@ url="https://github.com/HwGDReqs/HwGDReqs"
 license=('GPL-v3')
 
 depends=(
-    # System dependencies (all available in official repos)
     'python'
     'pyside6'
     'python-requests'
@@ -16,8 +15,7 @@ depends=(
     'python-keyring'
     'python-qrcode'
     'python-websockets'
-    'python-pip'  # Keep for pip installs
-    'python-hatchling'
+    'python-pip'
 )
 
 makedepends=(
@@ -25,20 +23,25 @@ makedepends=(
     'python-installer'
     'python-wheel'
     'python-pip'
+    'python-hatchling'
 )
 
-# PyPI packages that aren't in Arch repos
 _pip_deps=(
     'pytchat'
     'curl_cffi'
 )
 
-# Fixed: GitHub archive extracts to HwGDReqs-1.7.0, not hwgdreqs-1.7.0
-source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/$pkgver.tar.gz")
-sha256sums=('SKIP')
+# Add icon to sources - downloaded separately
+source=(
+    "$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/$pkgver.tar.gz"
+    "hwgdreqs.png::$url/raw/main/assets/logo.png"
+)
+sha256sums=(
+    'SKIP'
+    'EAA11BDC7B229C0107D387E7AC1826846966201F9CAF866AF0F02C137227CAB6'
+)
 
 build() {
-    # The extracted directory is HwGDReqs-1.7.0 (capitalization matters!)
     cd "$srcdir/HwGDReqs-$pkgver"
     python -m build --wheel --no-isolation
 }
@@ -46,17 +49,19 @@ build() {
 package() {
     cd "$srcdir/HwGDReqs-$pkgver"
     
-    # Install the main package
     python -m installer --destdir="$pkgdir" dist/*.whl
     
-    # Install pip-only dependencies directly into the package
     python -m pip install \
         --target="$pkgdir/usr/lib/python$(python -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')/site-packages" \
         --no-deps \
         "${_pip_deps[@]}"
     
-    # Install desktop file if it exists
     if [ -f "hwgdreqs.desktop" ]; then
         install -Dm644 hwgdreqs.desktop "$pkgdir/usr/share/applications/hwgdreqs.desktop"
+    fi
+    
+    if [ -f "$srcdir/hwgdreqs.png" ]; then
+        install -Dm644 "$srcdir/hwgdreqs.png" "$pkgdir/usr/share/icons/hicolor/256x256/apps/hwgdreqs.png"
+        install -Dm644 "$srcdir/hwgdreqs.png" "$pkgdir/usr/share/pixmaps/hwgdreqs.png"
     fi
 }
