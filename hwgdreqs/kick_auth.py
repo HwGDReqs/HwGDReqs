@@ -69,6 +69,28 @@ class KickSession:
         }
 
 
+def has_chat_edit_scope() -> bool:
+    data = load_kick_auth()
+    return bool(data and data.get("chat_edit_scope", True))
+
+
+def get_queue_command_enabled() -> bool:
+    data = load_kick_auth()
+    return bool(
+        data
+        and data.get("chat_edit_scope", True)
+        and data.get("queue_command_enabled", True)
+    )
+
+
+def set_queue_command_enabled(enabled: bool) -> None:
+    data = load_kick_auth()
+    if not data:
+        return
+    data["queue_command_enabled"] = enabled
+    save_kick_auth(data)
+
+
 def _require_client_id() -> str:
     if not KICK_CLIENT_ID:
         raise KickAuthError(

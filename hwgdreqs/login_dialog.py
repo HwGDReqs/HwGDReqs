@@ -81,7 +81,7 @@ class TwitchLoginDialog(QDialog):
 
         if not hide_queue_checkbox:
             self._queue_command_cb = QCheckBox(
-                "Want people to type !queue to see current queue "
+                "Want people to type commands to see queue/position/status?"
                 "(will respond under your account)"
             )
             self._queue_command_cb.setChecked(include_chat_edit)

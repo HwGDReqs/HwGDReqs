@@ -212,7 +212,6 @@ class KickChatWorker(QObject):
             return
         if self._queue.twitch_vip_only and not is_vip and not is_mod and not is_broadcaster:
             return
-        
         matches = []
         for m in LEVEL_RE.finditer(message):
             matches.append((m.start(), m.group(1)))
@@ -566,4 +565,4 @@ class KickChatWorker(QObject):
                 pass
             else:
                 self._maybe_send("filtered_out", f"[HwGDReqs] @{requester} your level \"{level_id}\" could not be added because of Filters")
-        return added
+        return addeds

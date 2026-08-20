@@ -40,8 +40,49 @@ from hwgdreqs.twitch_auth import (
     get_channel_moderate_enabled,
     set_channel_moderate_enabled,
 )
+from hwgdreqs.kick_auth import (
+    get_queue_command_enabled as get_kick_queue_command_enabled,
+    set_queue_command_enabled as set_kick_queue_command_enabled,
+)
 from hwgdreqs.youtube_auth import load_youtube_session, save_youtube_session, clear_youtube_auth, YoutubeSession
 from hwgdreqs.cloudflared import CloudflaredManager
+
+
+_OBS_PROCESS_NAMES = {"obs64.exe", "obs32.exe", "obs.exe", "obs", "obs-studio"}
+
+
+def is_obs_running() -> bool:
+    """Best-effort, cross-platform check for a running OBS Studio process.
+    Used to avoid flashing the exposed API link (which grants full queue
+    control) on someone's stream/recording."""
+    try:
+        if sys.platform == "win32":
+            result = subprocess.run(
+                ["tasklist", "/FO", "CSV", "/NH"],
+                capture_output=True,
+                text=True,
+                timeout=3,
+                creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, "CREATE_NO_WINDOW") else 0,
+            )
+            output = result.stdout.lower()
+            return any(f'"{name}"' in output for name in _OBS_PROCESS_NAMES)
+        else:
+            # macOS/Linux: list just command names, exact-match to avoid
+            # false positives from substrings in unrelated process/window names
+            result = subprocess.run(
+                ["ps", "-A", "-o", "comm="],
+                capture_output=True,
+                text=True,
+                timeout=3,
+            )
+            names = {
+                line.strip().rsplit("/", 1)[-1].lower()
+                for line in result.stdout.splitlines()
+                if line.strip()
+            }
+            return bool(names & _OBS_PROCESS_NAMES)
+    except Exception:
+        return False
 
 
 class BlacklistTab(QWidget):
@@ -661,11 +702,21 @@ class ApiTab(QWidget):
         cloudflared_layout.addWidget(self._cloudflared_copy_btn)
 
         self._cloudflared_qr_btn = QPushButton("Show QR Code")
-        self._cloudflared_qr_btn.clicked.connect(lambda: self._show_qr(self._cloudflared_link_label.text().replace("link: ", "")))
+        self._cloudflared_qr_btn.clicked.connect(lambda: self._show_qr(self._cloudflared_link_real))
         cloudflared_layout.addWidget(self._cloudflared_qr_btn)
 
         cloudflared_layout.addStretch()
         layout.addLayout(cloudflared_layout)
+
+        self._obs_warning_label = QLabel(
+            "OBS Mode: the link above is hidden so it can't leak on stream/recording. "
+            "'Copy link' still copies the link btw"
+        )
+        self._obs_warning_label.setWordWrap(True)
+        self._obs_warning_label.setStyleSheet("color: #d9822b;")
+        self._obs_warning_label.hide()
+        layout.addWidget(self._obs_warning_label)
+
         self._cloudflared_patience_label = QLabel(
             "This could (WILL) take some secondes depending on your internet/device/cloudflare servers, so please be patient or cancel."
         )
@@ -673,12 +724,19 @@ class ApiTab(QWidget):
         self._cloudflared_patience_label.setStyleSheet("color: #888; font-style: italic;")
         layout.addWidget(self._cloudflared_patience_label)
         self._cloudflared_patience_label.setVisible(self._cloudflared._connecting)
+        self._cloudflared_link_real = ""
+        self._obs_check_timer = QTimer(self)
+        self._obs_check_timer.setInterval(2000)
+        self._obs_check_timer.timeout.connect(self._refresh_link_display)
+
         running = self._cloudflared.is_running()
         self._cloudflared_link_label.setVisible(running)
         self._cloudflared_copy_btn.setVisible(running)
         self._cloudflared_qr_btn.setVisible(running)
         if running and self._cloudflared._url:
-            self._cloudflared_link_label.setText(f"link: {self._cloudflared._url}")
+            self._cloudflared_link_real = self._cloudflared._url
+            self._refresh_link_display()
+            self._obs_check_timer.start()
 
         layout.addStretch()
         
@@ -786,10 +844,12 @@ class ApiTab(QWidget):
         self._expose_btn.setText("Unexpose API to public")
         self._expose_btn.setEnabled(True)
         self._cloudflared_patience_label.hide()
-        self._cloudflared_link_label.setText(f"link: {url}")
+        self._cloudflared_link_real = url
         self._cloudflared_link_label.show()
         self._cloudflared_copy_btn.show()
         self._cloudflared_qr_btn.show()
+        self._refresh_link_display()
+        self._obs_check_timer.start()
 
     def _on_cloudflared_stopped(self):
         self._cloudflared._connecting = False
@@ -799,10 +859,28 @@ class ApiTab(QWidget):
         self._cloudflared_link_label.hide()
         self._cloudflared_copy_btn.hide()
         self._cloudflared_qr_btn.hide()
-        
+        self._obs_warning_label.hide()
+        self._obs_check_timer.stop()
+        self._cloudflared_link_real = ""
+
+    def _refresh_link_display(self) -> None:
+        if not self._cloudflared_link_real:
+            return
+
+        if is_obs_running():
+            censored = "https://" + "█" * 28
+            self._cloudflared_link_label.setText(f"link: {censored}")
+            self._obs_warning_label.show()
+            self._cloudflared_qr_btn.setEnabled(False)
+            self._cloudflared_qr_btn.setToolTip("Hidden while OBS is running to avoid leaking it on stream/recording.")
+        else:
+            self._cloudflared_link_label.setText(f"link: {self._cloudflared_link_real}")
+            self._obs_warning_label.hide()
+            self._cloudflared_qr_btn.setEnabled(True)
+            self._cloudflared_qr_btn.setToolTip("")
+
     def _copy_cloudflared_link(self):
-        text = self._cloudflared_link_label.text().replace("link: ", "")
-        QGuiApplication.clipboard().setText(text)
+        QGuiApplication.clipboard().setText(self._cloudflared_link_real)
 
     def _show_qr(self, url: str):
         if not url:
@@ -1013,6 +1091,7 @@ class SettingsDialog(QDialog):
     kick_logged_in = Signal(object)
     kick_logged_out = Signal()
     queue_command_changed = Signal(bool)
+    kick_queue_command_changed = Signal(bool)
 
     def __init__(self, queue: QueueManager, streamer_name: str, cloudflared, parent=None) -> None:
         super().__init__(parent)
@@ -1099,7 +1178,7 @@ class SettingsDialog(QDialog):
 
             self._has_chat_edit_scope = has_chat_edit_scope()
             self._queue_command_cb = QCheckBox(
-                "Want people to type !queue to see current queue "
+                "Want people to type commands to see queue/position/status?"
                 "(will respond under your account)"
             )
             self._queue_command_cb.setChecked(get_queue_command_enabled())
@@ -1319,18 +1398,28 @@ class SettingsDialog(QDialog):
         youtube_layout.addStretch()
         tabs.addTab(youtube_tab, "YouTube")
 
-        # ── Kick tab ──────────────────────────────────────────────────────────
+        # Kick tab
         kick_tab = QWidget()
         kick_layout = QVBoxLayout(kick_tab)
 
         from hwgdreqs.kick_auth import load_session as load_kick_session
         self._kick_session = load_kick_session()
+        self._kick_queue_command_cb = None
 
         if self._kick_session:
             kick_layout.addWidget(
                 QLabel(f"Kick Status: Logged in as {self._kick_session.display_name}")
             )
             kick_layout.addSpacing(15)
+
+            self._kick_queue_command_cb = QCheckBox(
+                "Want people to ty commands to see queue/position/status?"
+                "(will respond under your account)"
+            )
+            self._kick_queue_command_cb.setChecked(get_kick_queue_command_enabled())
+            self._kick_queue_command_cb.toggled.connect(self._on_kick_queue_command_toggled)
+            kick_layout.addWidget(self._kick_queue_command_cb)
+
             kick_logout_btn = QPushButton("Log Out from Kick")
             kick_logout_btn.clicked.connect(self._logout_kick)
             kick_layout.addWidget(kick_logout_btn)
@@ -1446,196 +1535,11 @@ class SettingsDialog(QDialog):
         set_queue_command_enabled(checked)
         self.queue_command_changed.emit(checked)
 
-    def _on_channel_moderate_toggled(self, checked: bool) -> None:
-        if self._channel_moderate_cb is None:
+    def _on_kick_queue_command_toggled(self, checked: bool) -> None:
+        if self._kick_queue_command_cb is None:
             return
-        if checked and not self._has_channel_moderate_scope:
-            self._channel_moderate_cb.blockSignals(True)
-            self._channel_moderate_cb.setChecked(False)
-            self._channel_moderate_cb.blockSignals(False)
-            QMessageBox.information(self, "Twitch", "You need to re-login")
-            return
-        set_channel_moderate_enabled(checked)
-
-    def _login_twitch(self) -> None:
-        include_chat_edit = self._login_queue_command_cb.isChecked()
-        include_channel_moderate = self._login_channel_moderate_cb.isChecked()
-        dialog = TwitchLoginDialog(
-            self,
-            include_chat_edit=include_chat_edit,
-            include_channel_moderate=include_channel_moderate,
-            hide_queue_checkbox=True,
-            hide_moderate_checkbox=True,
-        )
-        if dialog.exec() != QDialog.DialogCode.Accepted or not dialog.session:
-            return
-        self.twitch_logged_in.emit(dialog.session)
-        self.accept()
-
-    def _logout(self) -> None:
-        answer = QMessageBox.question(
-            self,
-            "Log Out",
-            "Log out from Twitch? You can log in again immediately.",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-        )
-        if answer != QMessageBox.StandardButton.Yes:
-            return
-        clear_auth()
-        self.logged_out.emit()
-        self.accept()
-
-    def _connect_youtube(self) -> None:
-        username = self._youtube_username_input.text().strip()
-        
-        if not username:
-            QMessageBox.warning(
-                self,
-                "YouTube Connection",
-                "Please enter your YouTube username. (dw about the @, I added it for you)",
-            )
-            return
-        
-        if not username.startswith("@"):
-            username = "@" + username
-            youtube_layout.addSpacing(15)
-            
-            username_label = QLabel("YouTube Username (@username):")
-            youtube_layout.addWidget(username_label)
-            
-            self._youtube_username_input = QLineEdit()
-            self._youtube_username_input.setPlaceholderText("@YourUsername")
-            youtube_layout.addWidget(self._youtube_username_input)
-            
-            youtube_layout.addSpacing(10)
-            
-            connect_btn = QPushButton("Connect YouTube")
-            connect_btn.clicked.connect(self._connect_youtube)
-            youtube_layout.addWidget(connect_btn)
-
-        youtube_layout.addSpacing(15)
-        yt_priority_group_label = QLabel("YouTube Priorities & Restrictions:")
-        yt_priority_group_font = yt_priority_group_label.font()
-        yt_priority_group_font.setBold(True)
-        yt_priority_group_label.setFont(yt_priority_group_font)
-        youtube_layout.addWidget(yt_priority_group_label)
-
-        self._youtube_member_priority_cb = QCheckBox("Member Priority")
-        self._youtube_member_priority_cb.setChecked(queue.youtube_member_priority)
-        youtube_layout.addWidget(self._youtube_member_priority_cb)
-
-        self._youtube_superchat_priority_cb = QCheckBox("Superchat Priority")
-        self._youtube_superchat_priority_cb.setChecked(queue.youtube_superchat_priority)
-        youtube_layout.addWidget(self._youtube_superchat_priority_cb)
-
-        self._youtube_members_only_cb = QCheckBox("Members Only (ONLY accept the level if its a member)")
-        self._youtube_members_only_cb.setChecked(queue.youtube_members_only)
-        youtube_layout.addWidget(self._youtube_members_only_cb)
-
-        self._youtube_superchats_only_cb = QCheckBox("Superchats Only (ONLY accept the level if its a superchat)")
-        self._youtube_superchats_only_cb.setChecked(queue.youtube_superchats_only)
-        youtube_layout.addWidget(self._youtube_superchats_only_cb) # 🤑🤑🤑
-
-        youtube_layout.addStretch()
-        tabs.addTab(youtube_tab, "YouTube")
-
-        self._api_tab = ApiTab(queue, cloudflared)
-        tabs.addTab(self._api_tab, "API")
-
-        self._level_history_tab = LevelHistoryTab(queue)
-        tabs.addTab(self._level_history_tab, "Level History")
-
-        self._keybinds_tab = KeybindsTab()
-        tabs.addTab(self._keybinds_tab, "Keybinds")
-
-        self._info_tab = InfoTab()
-        tabs.addTab(self._info_tab, "Info")
-
-        self._geode_tab = GeodeIntegrationTab()
-        tabs.addTab(self._geode_tab, "Geode Integration")
-
-        self._updater_tab = UpdaterTab(self)
-        tabs.addTab(self._updater_tab, "Updater")
-
-        layout.addLayout(self.tabs_grid)
-        layout.addWidget(self.tabs_stacked)
-
-        self._level_history_label = QLabel()
-        self._level_history_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._level_history_label.setWordWrap(True)
-        layout.addWidget(self._level_history_label)
-
-        close_btn = QPushButton("Close")
-        close_btn.clicked.connect(self._on_close)
-        layout.addWidget(close_btn)
-
-        self._level_history_tab._status_label = self._level_history_label
-
-        self.refresh()
-
-    def _on_close(self) -> None:
-        self._general_tab.apply()
-        self._filters_tab.apply_filters()
-        if not self._api_tab.apply():
-            return
-
-        bot_channel = self._twitch_bot_channel_input.text().strip()
-        if bot_channel and self._twitch_session:
-            from hwgdreqs.twitch_auth import check_twitch_user_exists
-            if not check_twitch_user_exists(self._twitch_session, bot_channel):
-                QMessageBox.warning(self, "Error", "Channel doesnt exist, recheck")
-                for i in range(self.tabs_stacked.count()):
-                    if self.tabs_stacked.widget(i) is self._twitch_bot_channel_input.parent():
-                        self._select_tab(i)
-                        break
-                return
-
-        self._queue.twitch_bot_channel_name = bot_channel
-        self._queue.max_levels_per_requester = self._general_tab._max_levels_spinbox.value()
-        self._queue.twitch_sub_priority = self._twitch_sub_priority_cb.isChecked()
-        self._queue.twitch_vip_priority = self._twitch_vip_priority_cb.isChecked()
-        self._queue.twitch_mod_priority = self._twitch_mod_priority_cb.isChecked()
-        self._queue.twitch_subs_only = self._twitch_subs_only_cb.isChecked()
-        self._queue.twitch_vip_only = self._twitch_vip_only_cb.isChecked()
-        self._queue.twitch_followers_only = self._twitch_followers_only_cb.isChecked()
-        
-        self._queue.twitch_reward_id = self._twitch_rewards_combo.currentData()
-        self._queue.twitch_reward_name = self._twitch_rewards_combo.currentText()
-        self._queue.twitch_reward_only = self._twitch_reward_only_cb.isChecked()
-        self._queue.twitch_reward_priority = self._twitch_reward_priority_cb.isChecked()
-
-        self._queue.youtube_member_priority = self._youtube_member_priority_cb.isChecked()
-        self._queue.youtube_superchat_priority = self._youtube_superchat_priority_cb.isChecked()
-        self._queue.youtube_members_only = self._youtube_members_only_cb.isChecked()
-        self._queue.youtube_superchats_only = self._youtube_superchats_only_cb.isChecked()
-
-        disabled_replies = [key for key, cb in self._bot_reply_toggles if not cb.isChecked()]
-        self._queue.twitch_bot_disabled_replies = disabled_replies
-        self._queue.twitch_bot_no_prefix = self._twitch_bot_no_prefix_cb.isChecked()
-
-        self.accept()
-
-    def _select_tab(self, index: int) -> None:
-        self.tabs_stacked.setCurrentIndex(index)
-        for i, btn in enumerate(self.tab_buttons):
-            btn.setChecked(i == index)
-
-    def refresh(self) -> None:
-        self._levels_tab.refresh()
-        self._authors_tab.refresh()
-        self._requesters_tab.refresh()
-
-    def _on_queue_command_toggled(self, checked: bool) -> None:
-        if self._queue_command_cb is None:
-            return
-        if checked and not self._has_chat_edit_scope:
-            self._queue_command_cb.blockSignals(True)
-            self._queue_command_cb.setChecked(False)
-            self._queue_command_cb.blockSignals(False)
-            QMessageBox.information(self, "Twitch", "You need to re-login")
-            return
-        set_queue_command_enabled(checked)
-        self.queue_command_changed.emit(checked)
+        set_kick_queue_command_enabled(checked)
+        self.kick_queue_command_changed.emit(checked)
 
     def _on_channel_moderate_toggled(self, checked: bool) -> None:
         if self._channel_moderate_cb is None:

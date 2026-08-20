@@ -663,10 +663,11 @@ class MainWindow(QMainWindow):
 
         if self._kick_session:
             from hwgdreqs.kick_chat import KickChatWorker
+            from hwgdreqs.kick_auth import get_queue_command_enabled as get_kick_queue_command_enabled
             self._kick_chat_worker = KickChatWorker(
                 self._kick_session,
                 self._queue,
-                queue_command_enabled=get_queue_command_enabled(),
+                queue_command_enabled=get_kick_queue_command_enabled(),
             )
             self._kick_chat_worker.status_changed.connect(self._on_kick_status_changed)
             self._kick_chat_worker.connection_failed.connect(self._on_kick_chat_failed)
@@ -1151,12 +1152,17 @@ class MainWindow(QMainWindow):
         dialog.youtube_updated.connect(lambda: self._start_chat(self._session))
         dialog.twitch_logged_in.connect(self._on_twitch_logged_in)
         dialog.queue_command_changed.connect(self._on_queue_command_changed)
+        dialog.kick_queue_command_changed.connect(self._on_kick_queue_command_changed)
         dialog.exec()
         self.refresh_queue()
 
     def _on_queue_command_changed(self, enabled: bool) -> None:
         if self._chat_worker:
             self._chat_worker.queue_command_enabled = enabled
+
+    def _on_kick_queue_command_changed(self, enabled: bool) -> None:
+        if self._kick_chat_worker:
+            self._kick_chat_worker.queue_command_enabled = enabled
 
     def _on_twitch_logged_in(self, session: TwitchSession) -> None:
         self._apply_session(session)
