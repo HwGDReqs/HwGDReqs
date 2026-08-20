@@ -319,6 +319,11 @@ jobs:
       - name: checkout repository
         uses: actions/checkout@v4
       
+      - name: Configure git safe directory
+        run: |
+          git config --global --add safe.directory /__w/HwGDReqs/HwGDReqs
+          sudo -u builder git config --global --add safe.directory /__w/HwGDReqs/HwGDReqs
+
       - name: build package
         run: |
           chown -R builder:builder .
