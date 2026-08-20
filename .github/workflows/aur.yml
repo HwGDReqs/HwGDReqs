@@ -1,38 +1,37 @@
-name: AUR
+name: Build PKGBUILD
 
 on:
-  workflow_dispatch:
+  workflow_dispatch: # Manual trigger
 
 jobs:
-  aur:
+  build:
     runs-on: ubuntu-latest
+    
+    container:
+      image: archlinux:latest
+    
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Calculate SHA256
+      - name: Install build dependencies
         run: |
-          VERSION=$(grep -Po 'pkgver=\K[^\n]+' PKGBUILD)
-          SHA256=$(curl -L "https://github.com/${{ github.repository }}/archive/v$VERSION.tar.gz" | sha256sum | cut -d' ' -f1)
-          sed -i "s/sha256sums=('.*')/sha256sums=('$SHA256')/g" PKGBUILD
-          sed -i "s/sha256sums = .*/sha256sums = $SHA256/g" .SRCINFO
+          pacman -Syu --noconfirm
+          pacman -S --noconfirm base-devel sudo git
       
-      - name: Setup SSH
+      - name: Create build user
         run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.AUR_SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
-          chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan aur.archlinux.org >> ~/.ssh/known_hosts
+          useradd -m builder
+          echo 'builder ALL=(ALL) NOPASSWD: ALL' >> /etc/sudoers
       
-      - name: Push to AUR
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Build package
         run: |
-          git clone ssh://aur@aur.archlinux.org/hwgdreqs.git aur-repo
-          
-          cp PKGBUILD aur-repo/
-          cp .SRCINFO aur-repo/
-          
-          cd aur-repo
-          git config user.name "${{ secrets.AUR_USERNAME }}"
-          git config user.email "${{ secrets.AUR_EMAIL }}"
-          git add PKGBUILD .SRCINFO
-          git commit -m "Update PKGBUILD"
-          git push
+          chown -R builder:builder .
+          sudo -u builder makepkg -si --noconfirm
+      
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: arch-package
+          path: "*.pkg.tar.*"
+          retention-days: 30
