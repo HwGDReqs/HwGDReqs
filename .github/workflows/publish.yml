@@ -309,7 +309,7 @@ jobs:
       - name: Install build deps
         run: |
           pacman -Syu --noconfirm
-          pacman -S --noconfirm base-devel sudo git
+          pacman -S --noconfirm base-devel sudo git github-cli
       
       - name: make build user
         run: |
