@@ -9,7 +9,7 @@ from pathlib import Path
 from cryptography.fernet import Fernet, InvalidToken
 
 APP_NAME = "HwGDReqs"
-APP_VERSION = "1.7.2"
+APP_VERSION = "1.8.0"
 
 TWITCH_CLIENT_ID = "hq65d75rdxry2cfjgemvydqp2vfr84"
 TWITCH_SCOPES = ["chat:read", "user:read:email", "moderator:read:followers", "channel:read:redemptions"]

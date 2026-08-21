@@ -37,9 +37,20 @@ def _make_handler(queue: QueueManager, session: TwitchSession | None = None, cha
             data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
             self.send_response(status)
             self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
+            self.send_header("Access-Control-Allow-Headers", "Content-Type")
             self.send_header("Content-Length", str(len(data)))
             self.end_headers()
             self.wfile.write(data)
+
+        def do_OPTIONS(self) -> None:
+            self.send_response(200)
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
+            self.send_header("Access-Control-Allow-Headers", "Content-Type")
+            self.end_headers()
+
 
         def _read_json(self) -> dict:
             length_raw = self.headers.get("Content-Length")
@@ -187,6 +198,33 @@ def _make_handler(queue: QueueManager, session: TwitchSession | None = None, cha
                 self._send_json({"enabled": queue.requests_enabled})
                 return
 
+            if path == "/filters":
+                diffs = ["Unrated", "Auto", "Easy", "Normal", "Hard", "Harder", "Insane", "Easy Demon", "Medium Demon", "Hard Demon", "Insane Demon", "Extreme Demon"]
+                lengths = ["Tiny", "Short", "Medium", "Long", "XL", "Plat"]
+                filters = {}
+                for d in diffs:
+                    filters[d] = (d in queue.allowed_difficulties)
+                for l in lengths:
+                    filters[l] = (l in queue.allowed_lengths)
+                self._send_json(filters)
+                return
+
+            if path == "/info":
+                from hwgdreqs.config import load_auth, load_kick_auth
+                from hwgdreqs.youtube_auth import load_youtube_session
+                
+                twitch_auth = load_auth()
+                kick_auth = load_kick_auth()
+                yt_session = load_youtube_session()
+                
+                info = {
+                    "twitch": twitch_auth.get("login") if twitch_auth else None,
+                    "kick": kick_auth.get("username") if kick_auth else None,
+                    "youtube": yt_session.username if yt_session else None,
+                }
+                self._send_json(info)
+                return
+
             self._send_json({"ok": False, "error": "not_found"}, status=404)
 
         def do_DELETE(self) -> None:
@@ -217,8 +255,14 @@ def _make_handler(queue: QueueManager, session: TwitchSession | None = None, cha
                     self._send_json({"ok": False, "error": str(e)}, status=404)
                     return
                 except GDBrowserError as e:
-                    self._send_json({"ok": False, "error": str(e)}, status=500)
-                    return
+                    level_data = {
+                        "id": level_id,
+                        "name": "⚠️ Unknown",
+                        "author": "-",
+                        "difficulty": "Unrated",
+                        "description": str(e),
+                        "length": "Tiny",
+                    }
 
                 requester = params.get("requester", "API")
                 platform = params.get("platform", "custom")
@@ -249,7 +293,12 @@ def _make_handler(queue: QueueManager, session: TwitchSession | None = None, cha
                 )
 
                 if success:
-                    self._send_json({"ok": True})
+                    spot = 0
+                    for i, e in enumerate(queue.levels):
+                        if str(e.id) == str(level_id):
+                            spot = i + 1
+                            break
+                    self._send_json({"ok": True, "spot": spot})
                 else:
                     self._send_json({"ok": False, "error": "add_failed"}, status=400)
                 return
@@ -271,8 +320,14 @@ def _make_handler(queue: QueueManager, session: TwitchSession | None = None, cha
                     self._send_json({"ok": False, "error": str(e)}, status=404)
                     return
                 except GDBrowserError as e:
-                    self._send_json({"ok": False, "error": str(e)}, status=500)
-                    return
+                    level_data = {
+                        "id": new_level_id,
+                        "name": "⚠️ Unknown",
+                        "author": "-",
+                        "difficulty": "Unrated",
+                        "description": str(e),
+                        "length": "Tiny",
+                    }
 
                 requester = params.get("requester", "API")
                 platform = params.get("platform", "custom")

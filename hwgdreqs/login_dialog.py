@@ -247,8 +247,9 @@ class KickLoginDialog(QDialog):
 
 
 class LoginDialog(QDialog):
-    def __init__(self, parent=None) -> None:
+    def __init__(self, parent=None, queue=None) -> None:
         super().__init__(parent)
+        self._queue = queue
         self.setWindowTitle("Login")
         self.setModal(True)
         self.setMinimumSize(450, 340)
@@ -289,6 +290,20 @@ class LoginDialog(QDialog):
         self.yt_input.setPlaceholderText("@YourUsername")
         self.yt_input.textChanged.connect(self._check_done_state)
         layout.addWidget(self.yt_input)
+        
+        layout.addSpacing(10)
+        
+        forms_label = QLabel("Forms Display Name (optional):")
+        forms_label.setToolTip("If you want to use the web form system, enter your display name here (e.g. 'Billy')")
+        layout.addWidget(forms_label)
+        
+        self.forms_input = QLineEdit()
+        self.forms_input.setPlaceholderText("Forms Display Name (optional)")
+        self.forms_input.setToolTip("If you want to use the web form system, enter your display name here (e.g. 'Billy')")
+        if self._queue:
+            self.forms_input.setText(self._queue.forms_display_name)
+        self.forms_input.textChanged.connect(self._check_done_state)
+        layout.addWidget(self.forms_input)
 
         layout.addStretch()
 
@@ -314,6 +329,8 @@ class LoginDialog(QDialog):
         btn_layout.addLayout(gd_btn_row)
 
         layout.addLayout(btn_layout)
+
+        self._check_done_state()
 
     @property
     def session(self) -> TwitchSession | None:
@@ -353,7 +370,8 @@ class LoginDialog(QDialog):
         has_twitch = self._session is not None
         has_kick = self._kick_session is not None
         has_yt = bool(self.yt_input.text().strip())
-        self.done_btn.setEnabled(has_twitch or has_yt or has_kick)
+        has_forms = bool(self.forms_input.text().strip())
+        self.done_btn.setEnabled(has_twitch or has_yt or has_kick or has_forms)
 
     def _on_done(self) -> None:
         yt_username = self.yt_input.text().strip()
@@ -361,6 +379,8 @@ class LoginDialog(QDialog):
             if not yt_username.startswith("@"):
                 yt_username = "@" + yt_username
             self._youtube_session = YoutubeSession(username=yt_username)
+        if self._queue:
+            self._queue.forms_display_name = self.forms_input.text().strip()
         self.accept()
 
     def _install_gd(self) -> None:

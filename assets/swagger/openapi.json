@@ -2,52 +2,275 @@
   "openapi": "3.0.0",
   "info": {
     "title": "HwGDReqs API",
-    "version": "1.7.2",
-    "description": "API for interacting with the Geometry Dash Request Queue"
+    "version": "1.8.0",
+    "description": "API for interacting with the HwGDReqs Geometry Dash level request queue. All endpoints are served locally (default: http://127.0.0.1:6767). CORS is open (*) — usable from any frontend or OBS browser source."
+  },
+  "components": {
+    "schemas": {
+      "LevelEntry": {
+        "type": "object",
+        "description": "A level in the request queue.",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "98006"
+          },
+          "name": {
+            "type": "string",
+            "example": "Bloodbath"
+          },
+          "author": {
+            "type": "string",
+            "example": "Riot"
+          },
+          "difficulty": {
+            "type": "string",
+            "example": "Extreme Demon",
+            "enum": [
+              "Unrated",
+              "Auto",
+              "Easy",
+              "Normal",
+              "Hard",
+              "Harder",
+              "Insane",
+              "Easy Demon",
+              "Medium Demon",
+              "Hard Demon",
+              "Insane Demon",
+              "Extreme Demon"
+            ]
+          },
+          "requester": {
+            "type": "string",
+            "description": "Display name of the requester (Twitch username, YouTube channel handle, or custom).",
+            "example": "SomeTwitchUser"
+          },
+          "requester2": {
+            "type": "string",
+            "description": "Platform user/channel ID (e.g. Twitch user-id or YouTube channelId). Used for ID-based blacklisting.",
+            "example": "123456789"
+          },
+          "platform": {
+            "type": "string",
+            "description": "Source platform for this request.",
+            "example": "twitch",
+            "enum": [
+              "twitch",
+              "youtube",
+              "kick",
+              "custom"
+            ]
+          },
+          "platform_icon": {
+            "type": "string",
+            "description": "URL or path to a custom platform icon (used when platform is custom).",
+            "example": ""
+          },
+          "message": {
+            "type": "string",
+            "description": "Optional message left by the requester.",
+            "example": "Please play this one!"
+          },
+          "description": {
+            "type": "string",
+            "example": "The hardest level ever made."
+          },
+          "length": {
+            "type": "string",
+            "example": "Long",
+            "enum": [
+              "Tiny",
+              "Short",
+              "Medium",
+              "Long",
+              "XL",
+              "Plat"
+            ]
+          },
+          "large": {
+            "type": "boolean",
+            "description": "True if the level has 40k+ objects.",
+            "example": false
+          },
+          "two_player": {
+            "type": "boolean",
+            "example": false
+          },
+          "disliked": {
+            "type": "boolean",
+            "example": false
+          },
+          "likes": {
+            "type": "integer",
+            "example": 15000
+          },
+          "downloads": {
+            "type": "integer",
+            "example": 2000000
+          },
+          "priority": {
+            "type": "boolean",
+            "description": "True if the level was added with priority.",
+            "example": false
+          },
+          "version": {
+            "type": "integer",
+            "example": 1
+          },
+          "timestamp": {
+            "type": "number",
+            "description": "Unix timestamp (seconds) of when the level was added. 0 if unknown.",
+            "example": 1700000000.0
+          },
+          "aredl_position": {
+            "type": "integer",
+            "nullable": true,
+            "description": "Position of this level on the AREDL list. null if not on the list.",
+            "example": 42
+          }
+        }
+      },
+      "OkResponse": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "example": true
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "example": false
+          },
+          "error": {
+            "type": "string",
+            "example": "not_found"
+          }
+        }
+      }
+    }
   },
   "paths": {
     "/queue": {
       "get": {
-        "summary": "Get the current queue",
+        "summary": "Get the full queue or a single entry by row index",
+        "description": "Returns all levels in the queue. Optionally pass `?row=N` to retrieve a single level by its 0-based position.",
         "parameters": [
           {
             "name": "row",
             "in": "query",
+            "required": false,
             "schema": {
-              "type": "integer"
+              "type": "integer",
+              "minimum": 0
             },
-            "description": "Get a specific row from the queue"
+            "description": "0-based row index of the level to retrieve."
           }
         ],
         "responses": {
           "200": {
-            "description": "OK",
+            "description": "Success — returns the queue or a single level.",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "properties": {
-                    "levels": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "properties": {
-                          "aredl_position": {
-                            "type": "integer",
-                            "description": "The rank of the level on the AREDL (if applicable)"
-                          },
-                          "requester": {
-                            "type": "string",
-                            "description": "Display name of the requester (Twitch login or YouTube channel name)"
-                          },
-                          "requester2": {
-                            "type": "string",
-                            "description": "Platform user/channel ID: Twitch user-id or YouTube channelId"
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "levels": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/LevelEntry"
                           }
                         }
                       }
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "level": {
+                          "$ref": "#/components/schemas/LevelEntry"
+                        }
+                      }
+                    }
+                  ]
+                },
+                "examples": {
+                  "full_queue": {
+                    "summary": "Full queue response",
+                    "value": {
+                      "levels": [
+                        {
+                          "id": "98006",
+                          "name": "Bloodbath",
+                          "author": "Riot",
+                          "difficulty": "Extreme Demon",
+                          "requester": "SomeTwitchUser",
+                          "requester2": "123456789",
+                          "platform": "twitch",
+                          "platform_icon": "",
+                          "message": "Please play this!",
+                          "description": "The hardest level.",
+                          "length": "Long",
+                          "large": false,
+                          "two_player": false,
+                          "disliked": false,
+                          "likes": 15000,
+                          "downloads": 2000000,
+                          "priority": false,
+                          "version": 1,
+                          "timestamp": 1700000000.0,
+                          "aredl_position": 42
+                        }
+                      ]
+                    }
+                  },
+                  "single_row": {
+                    "summary": "Single level by row",
+                    "value": {
+                      "level": {
+                        "id": "98006",
+                        "name": "Bloodbath",
+                        "author": "Riot",
+                        "difficulty": "Extreme Demon",
+                        "requester": "SomeTwitchUser",
+                        "requester2": "",
+                        "platform": "twitch",
+                        "platform_icon": "",
+                        "message": "",
+                        "description": "",
+                        "length": "Long",
+                        "large": false,
+                        "two_player": false,
+                        "disliked": false,
+                        "likes": 0,
+                        "downloads": 0,
+                        "priority": false,
+                        "version": 1,
+                        "timestamp": 0.0,
+                        "aredl_position": null
+                      }
                     }
                   }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid row index.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "ok": false,
+                  "error": "invalid_row"
                 }
               }
             }
@@ -55,10 +278,21 @@
         }
       },
       "delete": {
-        "summary": "Clear the queue",
+        "summary": "Clear the entire queue",
+        "description": "Removes all levels from the queue. Equivalent to POST /clear.",
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "Queue cleared.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkResponse"
+                },
+                "example": {
+                  "ok": true
+                }
+              }
+            }
           }
         }
       }
@@ -68,38 +302,81 @@
         "summary": "Get the number of levels in the queue",
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "Count of levels currently in the queue.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "count": {
+                      "type": "integer",
+                      "example": 7
+                    }
+                  }
+                },
+                "example": {
+                  "count": 7
+                }
+              }
+            }
           }
         }
       }
     },
     "/current": {
       "get": {
-        "summary": "Get the current level",
+        "summary": "Get the current (first) level in the queue",
+        "description": "Returns the level at position 0, or `{\"level\": null}` if the queue is empty.",
         "responses": {
           "200": {
-            "description": "OK",
+            "description": "The first level, or null.",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "object",
                   "properties": {
                     "level": {
-                      "type": "object",
-                      "properties": {
-                        "aredl_position": {
-                          "type": "integer",
-                          "description": "The rank of the level on the AREDL (if applicable)"
-                        },
-                        "requester": {
-                          "type": "string",
-                          "description": "Display name of the requester"
-                        },
-                        "requester2": {
-                          "type": "string",
-                          "description": "Platform user/channel ID"
+                      "nullable": true,
+                      "allOf": [
+                        {
+                          "$ref": "#/components/schemas/LevelEntry"
                         }
+                      ]
+                    }
+                  }
+                },
+                "examples": {
+                  "has_level": {
+                    "summary": "Queue is non-empty",
+                    "value": {
+                      "level": {
+                        "id": "98006",
+                        "name": "Bloodbath",
+                        "author": "Riot",
+                        "difficulty": "Extreme Demon",
+                        "requester": "SomeTwitchUser",
+                        "requester2": "",
+                        "platform": "twitch",
+                        "platform_icon": "",
+                        "message": "",
+                        "description": "",
+                        "length": "Long",
+                        "large": false,
+                        "two_player": false,
+                        "disliked": false,
+                        "likes": 0,
+                        "downloads": 0,
+                        "priority": false,
+                        "version": 1,
+                        "timestamp": 1700000000.0,
+                        "aredl_position": 42
                       }
+                    }
+                  },
+                  "empty": {
+                    "summary": "Queue is empty",
+                    "value": {
+                      "level": null
                     }
                   }
                 }
@@ -109,323 +386,10 @@
         }
       }
     },
-    "/add": {
-      "post": {
-        "summary": "Add a level to the queue (POST)",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "requester",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "platform",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "message",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "prio",
-            "in": "query",
-            "schema": {
-              "type": "boolean"
-            },
-            "description": "Set to true to prioritize this level"
-          },
-          {
-            "name": "platform-icon",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            },
-            "description": "URL or path to a platform icon"
-          },
-          {
-            "name": "requester2",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            },
-            "description": "Platform user/channel ID for the requester (e.g. Twitch user-id or YouTube channelId). Used for ID-based blacklisting."
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK"
-          }
-        }
-      }
-    },
-    "/replace": {
-      "post": {
-        "summary": "Replace a level in the queue (POST)",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string"
-            },
-            "description": "Old level ID"
-          },
-          {
-            "name": "new_id",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string"
-            },
-            "description": "New level ID"
-          },
-          {
-            "name": "requester",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "platform",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "message",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "platform-icon",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            },
-            "description": "URL or path to a platform icon"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK"
-          }
-        }
-      }
-    },
-    "/delete": {
-      "post": {
-        "summary": "Delete a level from the queue (POST)",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK"
-          }
-        }
-      }
-    },
-    "/blacklist": {
-      "get": {
-        "summary": "Get blacklisted levels, authors, and requesters",
-        "responses": {
-          "200": {
-            "description": "OK"
-          }
-        }
-      }
-    },
-    "/blacklistlevel": {
-      "post": {
-        "summary": "Blacklist a level (POST)",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK"
-          }
-        }
-      }
-    },
-    "/banauthor": {
-      "post": {
-        "summary": "Ban an author (POST)",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK"
-          }
-        }
-      }
-    },
-    "/banrequester": {
-      "post": {
-        "summary": "Ban a requester by name (and their platform ID if known) (POST)",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string"
-            },
-            "description": "Level ID whose requester should be banned"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK"
-          }
-        }
-      }
-    },
-    "/banrequester2": {
-      "post": {
-        "summary": "Blacklist a requester by platform ID directly (POST)",
-        "parameters": [
-          {
-            "name": "requester2",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string"
-            },
-            "description": "Platform user/channel ID to blacklist (eg Twitch user-id or YouTube channelId)"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK"
-          }
-        }
-      }
-    },
-    "/bantwitch": {
-      "post": {
-        "summary": "Ban a requester on Twitch (POST)",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK"
-          }
-        }
-      }
-    },
-    "/clear": {
-      "post": {
-        "summary": "Clear the queue (POST)",
-        "responses": {
-          "200": {
-            "description": "OK"
-          }
-        }
-      }
-    },
-    "/requests-on": {
-      "post": {
-        "summary": "Enable requests (POST)",
-        "parameters": [
-          {
-            "name": "send-twitch",
-            "in": "query",
-            "schema": {
-              "type": "boolean"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK"
-          }
-        }
-      }
-    },
-    "/requests-off": {
-      "post": {
-        "summary": "Disable requests (POST)",
-        "parameters": [
-          {
-            "name": "send-twitch",
-            "in": "query",
-            "schema": {
-              "type": "boolean"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK"
-          }
-        }
-      }
-    },
-    "/requests-state": {
-      "get": {
-        "summary": "Get requests enabled state",
-        "responses": {
-          "200": {
-            "description": "OK"
-          }
-        }
-      }
-    },
     "/search": {
       "get": {
         "summary": "Search the queue",
+        "description": "Case-insensitive search across level name, ID, author, and requester.",
         "parameters": [
           {
             "name": "q",
@@ -433,12 +397,863 @@
             "required": true,
             "schema": {
               "type": "string"
-            }
+            },
+            "description": "Search query string.",
+            "example": "bloodbath"
           }
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "Matching levels.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "levels": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/LevelEntry"
+                      }
+                    }
+                  }
+                },
+                "example": {
+                  "levels": [
+                    {
+                      "id": "98006",
+                      "name": "Bloodbath",
+                      "author": "Riot",
+                      "difficulty": "Extreme Demon"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/filters": {
+      "get": {
+        "summary": "Get enabled difficulty and length filters",
+        "description": "Returns a map of all possible difficulty and length values to a boolean indicating whether they are currently allowed in requests.",
+        "responses": {
+          "200": {
+            "description": "Filters map.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "boolean"
+                  }
+                },
+                "example": {
+                  "Unrated": true,
+                  "Auto": false,
+                  "Easy": true,
+                  "Normal": true,
+                  "Hard": true,
+                  "Harder": true,
+                  "Insane": true,
+                  "Easy Demon": true,
+                  "Medium Demon": true,
+                  "Hard Demon": true,
+                  "Insane Demon": true,
+                  "Extreme Demon": true,
+                  "Tiny": true,
+                  "Short": true,
+                  "Medium": true,
+                  "Long": true,
+                  "XL": true,
+                  "Plat": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/requests-state": {
+      "get": {
+        "summary": "Get whether requests are currently enabled",
+        "responses": {
+          "200": {
+            "description": "Current requests enabled state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean",
+                      "example": true
+                    }
+                  }
+                },
+                "example": {
+                  "enabled": true
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/blacklist": {
+      "get": {
+        "summary": "Get all blacklisted levels, authors, requesters, and requester IDs",
+        "responses": {
+          "200": {
+            "description": "All blacklisted entries.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "levels": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "description": "Blacklisted level IDs.",
+                      "example": [
+                        "98006",
+                        "12345"
+                      ]
+                    },
+                    "authors": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "description": "Blacklisted author names.",
+                      "example": [
+                        "Riot"
+                      ]
+                    },
+                    "requesters": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "description": "Blacklisted requester display names.",
+                      "example": [
+                        "SpamUser"
+                      ]
+                    },
+                    "requester2s": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "description": "Blacklisted requester platform IDs (Twitch user-id or YouTube channelId).",
+                      "example": [
+                        "987654321"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/info": {
+      "get": {
+        "summary": "Get connected platform accounts",
+        "description": "Returns the logged-in Twitch login name, Kick username, and YouTube username (if any). Useful for overlays that need to know which account is active.",
+        "responses": {
+          "200": {
+            "description": "Connected accounts.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "twitch": {
+                      "type": "string",
+                      "nullable": true,
+                      "description": "Twitch login name, or null if not connected.",
+                      "example": "malikHw47"
+                    },
+                    "kick": {
+                      "type": "string",
+                      "nullable": true,
+                      "description": "Kick username, or null if not connected.",
+                      "example": null
+                    },
+                    "youtube": {
+                      "type": "string",
+                      "nullable": true,
+                      "description": "YouTube channel handle, or null if not connected.",
+                      "example": null
+                    }
+                  }
+                },
+                "example": {
+                  "twitch": "malikHw47",
+                  "kick": null,
+                  "youtube": null
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/add": {
+      "post": {
+        "summary": "Add a level to the queue",
+        "description": "Fetches level data from GDBrowser by `id` and appends it to the queue. Parameters can be sent as JSON body or query string.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "id"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "description": "GD level ID.",
+                    "example": "98006"
+                  },
+                  "requester": {
+                    "type": "string",
+                    "description": "Display name of the requester.",
+                    "example": "API"
+                  },
+                  "platform": {
+                    "type": "string",
+                    "description": "Platform name.",
+                    "example": "custom"
+                  },
+                  "message": {
+                    "type": "string",
+                    "description": "Optional message from the requester.",
+                    "example": "pls play"
+                  },
+                  "prio": {
+                    "type": "boolean",
+                    "description": "Set to true to give this request queue priority.",
+                    "example": false
+                  },
+                  "platform-icon": {
+                    "type": "string",
+                    "description": "URL or path to a platform icon image.",
+                    "example": ""
+                  },
+                  "requester2": {
+                    "type": "string",
+                    "description": "Platform user/channel ID (Twitch user-id or YouTube channelId). Used for ID-based blacklisting.",
+                    "example": ""
+                  }
+                }
+              },
+              "example": {
+                "id": "98006",
+                "requester": "SomeTwitchUser",
+                "platform": "twitch",
+                "message": "please!",
+                "prio": false,
+                "requester2": "123456789"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Level added successfully.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "spot": {
+                      "type": "integer",
+                      "description": "1-based position in the queue.",
+                      "example": 3
+                    }
+                  }
+                },
+                "example": {
+                  "ok": true,
+                  "spot": 3
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing ID or level could not be added.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "missing_id": {
+                    "value": {
+                      "ok": false,
+                      "error": "missing_id"
+                    }
+                  },
+                  "add_failed": {
+                    "value": {
+                      "ok": false,
+                      "error": "add_failed"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Level not found on GDBrowser.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "ok": false,
+                  "error": "Level 99999 not found"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "GDBrowser fetch timed out.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/replace": {
+      "post": {
+        "summary": "Replace a level already in the queue with a different one",
+        "description": "Finds the level with old `id` in the queue and replaces it with the new level data fetched for `new_id`. The `platform` cannot be `twitch` or `youtube` in this endpoint.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "id",
+                  "new_id"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "description": "Old level ID to replace.",
+                    "example": "98006"
+                  },
+                  "new_id": {
+                    "type": "string",
+                    "description": "New level ID.",
+                    "example": "12345"
+                  },
+                  "requester": {
+                    "type": "string",
+                    "example": "API"
+                  },
+                  "platform": {
+                    "type": "string",
+                    "example": "custom"
+                  },
+                  "message": {
+                    "type": "string",
+                    "example": ""
+                  },
+                  "platform-icon": {
+                    "type": "string",
+                    "example": ""
+                  }
+                }
+              },
+              "example": {
+                "id": "98006",
+                "new_id": "12345",
+                "requester": "API",
+                "platform": "custom"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Level replaced successfully.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkResponse"
+                },
+                "example": {
+                  "ok": true
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing IDs.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "ok": false,
+                  "error": "missing_id"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "New level not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/delete": {
+      "post": {
+        "summary": "Remove a level from the queue by ID",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "id"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "description": "Level ID to delete.",
+                    "example": "98006"
+                  }
+                }
+              },
+              "example": {
+                "id": "98006"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Level removed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkResponse"
+                },
+                "example": {
+                  "ok": true
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing ID.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "ok": false,
+                  "error": "missing_id"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/clear": {
+      "post": {
+        "summary": "Clear the entire queue (POST alias for DELETE /queue)",
+        "responses": {
+          "200": {
+            "description": "Queue cleared.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkResponse"
+                },
+                "example": {
+                  "ok": true
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/blacklistlevel": {
+      "post": {
+        "summary": "Blacklist a level by its ID",
+        "description": "Adds the level ID to the blacklist so it can no longer be requested.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "id"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "description": "Level ID to blacklist.",
+                    "example": "98006"
+                  }
+                }
+              },
+              "example": {
+                "id": "98006"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Level blacklisted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkResponse"
+                },
+                "example": {
+                  "ok": true
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing ID.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/banauthor": {
+      "post": {
+        "summary": "Blacklist the author of a level currently in the queue",
+        "description": "Finds the queue entry by `id` and blacklists the author name so no more levels by that author can be requested.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "id"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "description": "Queue entry level ID whose author to ban.",
+                    "example": "98006"
+                  }
+                }
+              },
+              "example": {
+                "id": "98006"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Author blacklisted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkResponse"
+                },
+                "example": {
+                  "ok": true
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing ID.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Entry not found in queue.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/banrequester": {
+      "post": {
+        "summary": "Blacklist the requester of a level currently in the queue",
+        "description": "Finds the queue entry by `id` and blacklists the requester's display name (and their platform ID `requester2` if known).",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "id"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "description": "Queue entry level ID whose requester to ban.",
+                    "example": "98006"
+                  }
+                }
+              },
+              "example": {
+                "id": "98006"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Requester blacklisted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkResponse"
+                },
+                "example": {
+                  "ok": true
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing ID.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Entry not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/bantwitch": {
+      "post": {
+        "summary": "Ban a requester on Twitch (requires Twitch session with moderation scope)",
+        "description": "Issues a Twitch ban for the requester of the given queue entry. Requires an active Twitch session with channel moderation enabled.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "id"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "description": "Queue entry level ID whose requester to ban on Twitch.",
+                    "example": "98006"
+                  }
+                }
+              },
+              "example": {
+                "id": "98006"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "User banned on Twitch.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkResponse"
+                },
+                "example": {
+                  "ok": true
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Various error conditions.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "missing_id": {
+                    "value": {
+                      "ok": false,
+                      "error": "missing_id"
+                    }
+                  },
+                  "no_twitch_session": {
+                    "value": {
+                      "ok": false,
+                      "error": "no_twitch_session"
+                    }
+                  },
+                  "moderation_not_enabled": {
+                    "value": {
+                      "ok": false,
+                      "error": "moderation_not_enabled"
+                    }
+                  },
+                  "cannot_ban_self": {
+                    "value": {
+                      "ok": false,
+                      "error": "cannot_ban_self"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Entry not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/requests-on": {
+      "post": {
+        "summary": "Enable requests",
+        "description": "Turns on request acceptance. Optionally sends a chat message via Twitch to announce it.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "send-twitch": {
+                    "type": "boolean",
+                    "description": "If true, sends a Twitch chat message announcing that requests are open.",
+                    "example": true
+                  }
+                }
+              },
+              "example": {
+                "send-twitch": true
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Requests enabled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkResponse"
+                },
+                "example": {
+                  "ok": true
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/requests-off": {
+      "post": {
+        "summary": "Disable requests",
+        "description": "Turns off request acceptance. Optionally sends a chat message via Twitch to announce it.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "send-twitch": {
+                    "type": "boolean",
+                    "description": "If true, sends a Twitch chat message announcing that requests are closed.",
+                    "example": true
+                  }
+                }
+              },
+              "example": {
+                "send-twitch": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Requests disabled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkResponse"
+                },
+                "example": {
+                  "ok": true
+                }
+              }
+            }
           }
         }
       }
