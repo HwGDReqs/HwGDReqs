@@ -15,11 +15,12 @@ import requests
 
 from hwgdreqs.config import (
     KICK_CLIENT_ID,
-    KICK_CLIENT_SECRET,
     KICK_SCOPES,
     KICK_AUTH_URL,
-    KICK_TOKEN_URL,
     KICK_USERS_URL,
+    KICK_PROXY_TOKEN_URL,
+    KICK_PROXY_REFRESH_URL,
+    KICK_PROXY_APP_KEY,
     load_kick_auth,
     save_kick_auth,
 )
@@ -211,23 +212,28 @@ def wait_for_callback(port: int = 6767, timeout: int = 300, expected_state: str 
 
 
 def exchange_code(code: str, code_verifier: str, port: int = 6767) -> dict:
-    client_id = _require_client_id()
+    _require_client_id()
     redirect_uri = f"http://localhost:{port}/callback"
-    
-    data = {
-        "client_id": client_id,
-        "grant_type": "authorization_code",
+
+    payload = {
         "code": code,
         "redirect_uri": redirect_uri,
-        "code_verifier": code_verifier
+        "code_verifier": code_verifier,
     }
-    if KICK_CLIENT_SECRET:
-        data["client_secret"] = KICK_CLIENT_SECRET
-    
-    response = requests.post(KICK_TOKEN_URL, data=data, timeout=15)
+
+    try:
+        response = requests.post(
+            KICK_PROXY_TOKEN_URL,
+            json=payload,
+            headers={"X-App-Key": KICK_PROXY_APP_KEY},
+            timeout=15,
+        )
+    except requests.RequestException as exc:
+        raise KickAuthError(f"Could not reach login server: {exc}") from exc
+
     if response.status_code != 200:
         raise KickAuthError(f"Token exchange failed: {response.text}")
-    
+
     return response.json()
 
 
@@ -285,18 +291,13 @@ def load_session() -> KickSession | None:
 def refresh_session(session: KickSession) -> KickSession | None:
     if not session.refresh_token:
         return None
-    client_id = _require_client_id()
-    data = {
-        "client_id": client_id,
-        "grant_type": "refresh_token",
-        "refresh_token": session.refresh_token,
-    }
-    if KICK_CLIENT_SECRET:
-        data["client_secret"] = KICK_CLIENT_SECRET
+    _require_client_id()
+    payload = {"refresh_token": session.refresh_token}
     try:
         response = requests.post(
-            KICK_TOKEN_URL,
-            data=data,
+            KICK_PROXY_REFRESH_URL,
+            json=payload,
+            headers={"X-App-Key": KICK_PROXY_APP_KEY},
             timeout=15,
         )
         if response.status_code != 200:

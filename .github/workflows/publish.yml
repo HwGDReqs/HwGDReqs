@@ -106,15 +106,6 @@ jobs:
       with:
         fetch-depth: 0
 
-    - name: Inject Kick Client Secret
-      shell: pwsh
-      run: |
-        if ($env:KICK_CLIENT_SECRET) {
-          Add-Content -Path "hwgdreqs/config.py" -Value "`nKICK_CLIENT_SECRET = KICK_CLIENT_SECRET or '$env:KICK_CLIENT_SECRET'"
-        }
-      env:
-        KICK_CLIENT_SECRET: ${{ secrets.KICK_CLIENT_SECRET }}
-    
     - name: pyinst.bat
       shell: cmd
       run: |
@@ -197,15 +188,6 @@ jobs:
           pip install pyinstaller
           pip install -r requirements.txt
 
-      - name: Inject Kick Client Secret
-        run: |
-          if [ -n "$KICK_CLIENT_SECRET" ]; then
-            echo "" >> hwgdreqs/config.py
-            echo "KICK_CLIENT_SECRET = KICK_CLIENT_SECRET or '$KICK_CLIENT_SECRET'" >> hwgdreqs/config.py
-          fi
-        env:
-          KICK_CLIENT_SECRET: ${{ secrets.KICK_CLIENT_SECRET }}
-
       - name: Build macOS app
         run: |
           pyinstaller --windowed --name HwGDReqs --icon assets/icon.icns --add-data "assets:assets" --osx-bundle-identifier=com.malikhw.hwgdreqs --target-architecture x86_64 hwgdreqs/main.py
@@ -255,15 +237,6 @@ jobs:
         run: |
           pip install pyinstaller
           pip install -r requirements.txt
-
-      - name: Inject Kick Client Secret
-        run: |
-          if [ -n "$KICK_CLIENT_SECRET" ]; then
-            echo "" >> hwgdreqs/config.py
-            echo "KICK_CLIENT_SECRET = KICK_CLIENT_SECRET or '$KICK_CLIENT_SECRET'" >> hwgdreqs/config.py
-          fi
-        env:
-          KICK_CLIENT_SECRET: ${{ secrets.KICK_CLIENT_SECRET }}
 
       - name: Build macOS app
         run: |

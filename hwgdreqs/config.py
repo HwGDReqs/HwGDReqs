@@ -9,7 +9,7 @@ from pathlib import Path
 from cryptography.fernet import Fernet, InvalidToken
 
 APP_NAME = "HwGDReqs"
-APP_VERSION = "1.7.0"
+APP_VERSION = "1.7.2"
 
 TWITCH_CLIENT_ID = "hq65d75rdxry2cfjgemvydqp2vfr84"
 TWITCH_SCOPES = ["chat:read", "user:read:email", "moderator:read:followers", "channel:read:redemptions"]
@@ -25,8 +25,11 @@ TWITCH_IRC_PORT = 6697  # SSL port; keeps the oauth token off the wire in plaint
 KICK_CLIENT_ID = "01M0AX7JGBNYZPZ5RX7CV5NEQF"
 KICK_SCOPES = ["user:read", "events:subscribe", "chat:write", "moderation:chat_message:manage"]
 KICK_AUTH_URL = "https://id.kick.com/oauth/authorize"
-KICK_TOKEN_URL = "https://id.kick.com/oauth/token"
 KICK_USERS_URL = "https://api.kick.com/public/v1/users"
+KICK_AUTH_PROXY_URL = ""
+KICK_PROXY_TOKEN_URL = f""
+KICK_PROXY_REFRESH_URL = f""
+KICK_PROXY_APP_KEY = ""
 
 LEVEL_ID_PATTERN = r"\b(\d{7,9})\b"
 COMMA_LEVEL_ID_PATTERN = r"\b(\d{1,3}(?:,\d{3})+)\b"
@@ -43,33 +46,6 @@ def exec_dir() -> Path:
     if getattr(sys, "frozen", False):
         return Path(sys.executable).parent
     return Path(__file__).resolve().parent.parent
-
-
-def _load_kick_secret() -> str | None:
-    secret = os.getenv("KICK_CLIENT_SECRET")
-    if secret:
-        return secret
-    for p in (Path.cwd() / ".env", exec_dir() / ".env"):
-        if p.exists():
-            try:
-                for line in p.read_text(encoding="utf-8").splitlines():
-                    if line.strip().startswith("KICK_CLIENT_SECRET="):
-                        val = line.split("=", 1)[1].strip()
-                        return val.strip('"').strip("'")
-            except Exception:
-                pass
-    for p in (Path.cwd() / "config.json", exec_dir() / "config.json"):
-        if p.exists():
-            try:
-                data = json.loads(p.read_text(encoding="utf-8"))
-                if "KICK_CLIENT_SECRET" in data:
-                    return str(data["KICK_CLIENT_SECRET"])
-            except Exception:
-                pass
-    return None
-
-
-KICK_CLIENT_SECRET = _load_kick_secret()
 
 
 def data_dir() -> Path:

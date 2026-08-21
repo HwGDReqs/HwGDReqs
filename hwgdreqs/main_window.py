@@ -560,6 +560,24 @@ class MainWindow(QMainWindow):
         from hwgdreqs.kick_auth import load_session as _load_kick_session
         kick_active = _load_kick_session() is not None
 
+        if kick_active:
+            msg = QMessageBox(self if self.isVisible() else None)
+            msg.setWindowTitle("Kick Support Suspended")
+            msg.setText("for Now kick support is temporarily down, if you (unlikely) happen to stream GD Level Requests to kick (why the fuck bro) just join the discord server and tell me, so i start reworking on it :3")
+            
+            logout_btn = msg.addButton("logout from kick", QMessageBox.ButtonRole.ActionRole)
+            discord_btn = msg.addButton("join discord server", QMessageBox.ButtonRole.ActionRole)
+            
+            msg.exec()
+            
+            if msg.clickedButton() == discord_btn:
+                import webbrowser
+                webbrowser.open("https://discord.gg/9rXye9jdKD")
+                
+            from hwgdreqs.config import save_kick_auth
+            save_kick_auth({})
+            kick_active = False
+
         if not session and not youtube_active and not kick_active:
             dialog = LoginDialog(None if not self.isVisible() else self)
             if dialog.exec() != LoginDialog.DialogCode.Accepted:

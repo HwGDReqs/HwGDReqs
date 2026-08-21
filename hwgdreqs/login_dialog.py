@@ -274,8 +274,10 @@ class LoginDialog(QDialog):
 
         layout.addSpacing(8)
 
-        self.kick_btn = QPushButton("Kick Login (BETA)")
-        self.kick_btn.clicked.connect(self._do_kick_login)
+        self.kick_btn = QPushButton("Kick support is suspended")
+        self.kick_btn.setEnabled(False)
+        self.kick_btn.setToolTip("because i dont know how to implement it safely, downgrading to older versions wont work either, join https://discord.gg/9rXye9jdKD if you ever stream lvl reqs to kick and tell me there")
+        # self.kick_btn.clicked.connect(self._do_kick_login)
         layout.addWidget(self.kick_btn)
 
         layout.addSpacing(10)
