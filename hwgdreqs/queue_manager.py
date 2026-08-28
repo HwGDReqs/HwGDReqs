@@ -111,8 +111,7 @@ class QueueData:
     command_queue: str = "!queue"
     command_whereami: str = "!whereami"
     command_commands: str = "!commands"
-    
-    forms_display_name: str = ""
+
 
 
 
@@ -591,18 +590,6 @@ class QueueManager(QObject):
             self._data.command_commands = value
             self.save()
             
-    @property
-    def forms_display_name(self) -> str:
-        with self._lock:
-            return self._data.forms_display_name
-
-    @forms_display_name.setter
-    def forms_display_name(self, value: str) -> None:
-        with self._lock:
-            self._data.forms_display_name = value
-            self.save()
-        self._notify()
-
 
 
     def is_on_cooldown(self, requester: str) -> bool:
@@ -755,7 +742,6 @@ class QueueManager(QObject):
             command_queue=str(raw.get("command_queue", "!queue")),
             command_whereami=str(raw.get("command_whereami", "!whereami")),
             command_commands=str(raw.get("command_commands", "!commands")),
-            forms_display_name=str(raw.get("forms_display_name", "")),
         )
 
         # Populate missing timestamps
@@ -834,7 +820,6 @@ class QueueManager(QObject):
                 "command_queue": self._data.command_queue,
                 "command_whereami": self._data.command_whereami,
                 "command_commands": self._data.command_commands,
-                "forms_display_name": self._data.forms_display_name,
             }
 
             target_path = queue_file()

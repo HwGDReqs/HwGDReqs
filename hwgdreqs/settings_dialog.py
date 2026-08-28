@@ -1084,34 +1084,6 @@ class GeodeIntegrationTab(QWidget):
         install_geode_integration(self)
 
 
-class FormsTab(QWidget):
-    def __init__(self, queue: QueueManager, parent=None) -> None:
-        super().__init__(parent)
-        self._queue = queue
-        
-        layout = QVBoxLayout(self)
-        
-        forms_label = QLabel("Forms Display Name (optional):")
-        forms_label.setToolTip("If you want to use the web form system, enter your display name here (e.g. 'MalikHw47')")
-        layout.addWidget(forms_label)
-        
-        self.forms_input = QLineEdit()
-        self.forms_input.setPlaceholderText("Forms Display Name (optional)")
-        self.forms_input.setToolTip("If you want to use the web form system, enter your display name here (e.g. 'MalikHw47')")
-        self.forms_input.setText(self._queue.forms_display_name)
-        layout.addWidget(self.forms_input)
-
-        watch_video_link = QLabel(
-            '<a href="https://github.com/HwGDReqs/forms-tutorial/raw/refs/heads/main/forms.mkv">Watch video</a>'
-        )
-        watch_video_link.setOpenExternalLinks(True)
-        layout.addWidget(watch_video_link)
-
-        layout.addStretch()
-
-    def apply(self) -> None:
-        self._queue.forms_display_name = self.forms_input.text().strip()
-
 
 class SettingsDialog(QDialog):
     logged_out = Signal()
@@ -1157,9 +1129,6 @@ class SettingsDialog(QDialog):
 
         self._general_tab = GeneralTab(queue)
         tabs.addTab(self._general_tab, "General")
-
-        self._forms_tab = FormsTab(queue)
-        tabs.addTab(self._forms_tab, "Forms")
 
         self._levels_tab = BlacklistTab(
             "Blacklisted level IDs will not be added to the queue.",
@@ -1502,7 +1471,6 @@ class SettingsDialog(QDialog):
 
     def _on_close(self) -> None:
         self._general_tab.apply()
-        self._forms_tab.apply()
         self._filters_tab.apply_filters()
         # ApiTab.apply() returns False if the user was warned about a port
         # conflict/privileged port and chose not to proceed; keep the dialog

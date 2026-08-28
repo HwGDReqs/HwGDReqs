@@ -302,11 +302,6 @@ class MainWindow(QMainWindow):
         settings_btn.clicked.connect(self._open_settings)
         header.addWidget(settings_btn)
         
-        self._get_form_link_btn = QPushButton("Get Form Link")
-        self._get_form_link_btn.setToolTip("Expose your API and generate a form link")
-        self._get_form_link_btn.clicked.connect(self._on_get_form_link_clicked)
-        header.addWidget(self._get_form_link_btn)
-
         self._toggle_requests_btn = QPushButton("Disable requests" if self._queue.requests_enabled else "Enable requests")
         self._toggle_requests_btn.clicked.connect(self._toggle_requests)
         header.addWidget(self._toggle_requests_btn)
@@ -583,9 +578,7 @@ class MainWindow(QMainWindow):
             save_kick_auth({})
             kick_active = False
 
-        forms_active = bool(self._queue.forms_display_name.strip())
-
-        if not session and not youtube_active and not kick_active and not forms_active:
+        if not session and not youtube_active and not kick_active:
             dialog = LoginDialog(None if not self.isVisible() else self, queue=self._queue)
             if dialog.exec() != LoginDialog.DialogCode.Accepted:
                 return False
@@ -598,18 +591,14 @@ class MainWindow(QMainWindow):
                 save_kick_auth(dialog.kick_session.to_auth_dict())
                 self._kick_session = dialog.kick_session
             
-            forms_active = bool(self._queue.forms_display_name.strip())
             if (
                 not session
                 and not dialog.youtube_session
                 and not dialog.kick_session
-                and not forms_active
             ):
                 return False
         
         self._apply_session(session)
-        if self._queue.forms_display_name.strip():
-            QTimer.singleShot(500, self._show_forms_link_notice)
         return True
 
     def _poll_saved_session(
@@ -647,20 +636,6 @@ class MainWindow(QMainWindow):
         self._api_server.set_session(session)
         self._youtube_session = load_youtube_session()
         self._start_chat(session)
-
-    def _show_forms_link_notice(self) -> None:
-        msg = QMessageBox(self)
-        msg.setWindowTitle("Form Links Aren't Persistent!")
-        msg.setText(
-            "Form links aren't persistent between sessions.\n\n"
-            "Everytime you boot up the app, for forms to work:\n"
-            "1. Click the \"Get Form Link\" button on top to expose your queue to the forms server.\n"
-            "2. It'll tell you to visit a page — paste that link there and edit as your preferences.\n"
-            "3. Then the form link will be active!"
-        )
-        msg.setIcon(QMessageBox.Icon.Information)
-        msg.setStandardButtons(QMessageBox.StandardButton.Ok)
-        msg.exec()
 
     def _start_chat(self, session: TwitchSession | None) -> None:
         self._stop_chat()
@@ -879,8 +854,6 @@ class MainWindow(QMainWindow):
             if index_to_select >= 0:
                 self._list.setCurrentRow(index_to_select)
         self._toggle_requests_btn.setText("Disable requests" if self._queue.requests_enabled else "Enable requests")
-        if hasattr(self, '_get_form_link_btn'):
-            self._get_form_link_btn.setVisible(bool(self._queue.forms_display_name))
 
     def _selected_entry(self) -> LevelEntry | None:
         item = self._list.currentItem()
@@ -1579,86 +1552,3 @@ class MainWindow(QMainWindow):
             self._popout_window.shutdown()
         super().closeEvent(event)
 
-    def _on_get_form_link_clicked(self) -> None:
-        if not self._cloudflared.is_installed():
-            msg = QMessageBox(self)
-            msg.setWindowTitle("Dependency Missing")
-            if sys.platform == "win32":
-                msg.setText("This feature needs a dependency Cloudflare Tunnel which is not installed, please insatll it to continue using this")
-                dl_btn = msg.addButton("Download", QMessageBox.ButtonRole.ActionRole)
-                cancel_btn = msg.addButton("Cancel", QMessageBox.ButtonRole.RejectRole)
-                msg.exec()
-                if msg.clickedButton() == dl_btn:
-                    from PySide6.QtGui import QDesktopServices
-                    from PySide6.QtCore import QUrl
-                    QDesktopServices.openUrl(QUrl("https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.msi"))
-            else: # linux
-                msg.setText("This feature needs a dependency Cloudflare Tunnel which is not installed, please insatll it to continue using this using your distro's instructions")
-                how_btn = msg.addButton("How", QMessageBox.ButtonRole.ActionRole)
-                cancel_btn = msg.addButton("Cancel", QMessageBox.ButtonRole.RejectRole)
-                msg.exec()
-                if msg.clickedButton() == how_btn:
-                    from PySide6.QtGui import QDesktopServices
-                    from PySide6.QtCore import QUrl
-                    QDesktopServices.openUrl(QUrl("https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/downloads/#linux"))
-            return
-
-        if self._cloudflared.is_running() and self._cloudflared._url:
-            self._handle_form_link_ready(self._cloudflared._url)
-            return
-
-        from PySide6.QtWidgets import QProgressDialog
-        self._cloudflared_progress = QProgressDialog("Starting Cloudflare Tunnel...", "Cancel", 0, 0, self)
-        self._cloudflared_progress.setWindowTitle("Please Wait")
-        self._cloudflared_progress.setModal(True)
-        self._cloudflared_progress.canceled.connect(self._cloudflared.stop)
-        
-        # Connect to link ready
-        self._cloudflared.link_ready.connect(self._on_form_cloudflared_link)
-        self._cloudflared.stopped.connect(self._on_form_cloudflared_stopped)
-        
-        self._cloudflared.start(self._queue.api_local_port)
-        self._cloudflared_progress.exec()
-
-    def _on_form_cloudflared_link(self, url: str) -> None:
-        try:
-            self._cloudflared.link_ready.disconnect(self._on_form_cloudflared_link)
-            self._cloudflared.stopped.disconnect(self._on_form_cloudflared_stopped)
-        except Exception:
-            pass
-        if hasattr(self, '_cloudflared_progress') and self._cloudflared_progress:
-            self._cloudflared_progress.accept()
-            self._cloudflared_progress = None
-        self._handle_form_link_ready(url)
-
-    def _on_form_cloudflared_stopped(self) -> None:
-        try:
-            self._cloudflared.link_ready.disconnect(self._on_form_cloudflared_link)
-            self._cloudflared.stopped.disconnect(self._on_form_cloudflared_stopped)
-        except Exception:
-            pass
-        if hasattr(self, '_cloudflared_progress') and self._cloudflared_progress:
-            self._cloudflared_progress.reject()
-            self._cloudflared_progress = None
-        QMessageBox.warning(self, "Error", "Cloudflare Tunnel failed to start or was stopped.")
-
-    def _handle_form_link_ready(self, url: str) -> None:
-        from PySide6.QtGui import QGuiApplication
-        from PySide6.QtCore import QUrl
-        from PySide6.QtGui import QDesktopServices
-        import urllib.parse
-        
-        QGuiApplication.clipboard().setText(url)
-        
-        msg = QMessageBox(self)
-        msg.setWindowTitle("API Link Ready!")
-        msg.setText("The queue access link is copied to your clipboard.\n\nOpen the forms setup page and paste it there along with your preferences.")
-        
-        open_btn = msg.addButton("Open Setup", QMessageBox.ButtonRole.ActionRole)
-        cancel_btn = msg.addButton("Cancel", QMessageBox.ButtonRole.RejectRole)
-        
-        msg.exec()
-        
-        if msg.clickedButton() == open_btn:
-            alias = urllib.parse.quote(self._queue.forms_display_name)
-            QDesktopServices.openUrl(QUrl(f"https://hwgdreqs-forms.gamer.gd/?alias={alias}"))
