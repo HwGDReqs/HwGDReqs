@@ -8,7 +8,8 @@ from urllib.parse import parse_qs, urlparse
 
 from hwgdreqs.queue_manager import QueueManager
 from hwgdreqs.twitch_auth import TwitchSession, get_channel_moderate_enabled, ban_twitch_user
-from hwgdreqs.config import asset_path
+from hwgdreqs.config import asset_path, DEFAULT_BROWSER_SOURCE_HTML
+from hwgdreqs.browser_source import render_queue_html
 
 
 import urllib.request
@@ -130,6 +131,36 @@ def _make_handler(queue: QueueManager, session: TwitchSession | None = None, cha
                     with open(asset_path(f"swagger{path}"), "rb") as f:
                         data = f.read()
                     mime, _ = mimetypes.guess_type(path)
+                    self.send_response(200)
+                    self.send_header("Content-Type", mime or "application/octet-stream")
+                    self.send_header("Content-Length", str(len(data)))
+                    self.end_headers()
+                    self.wfile.write(data)
+                except OSError:
+                    self._send_json({"ok": False, "error": "not_found"}, status=404)
+                return
+
+            if path == "/source/queue":
+                template = queue.browser_source_html or DEFAULT_BROWSER_SOURCE_HTML
+                html = render_queue_html(template, queue)
+                data = html.encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+                return
+
+            if path.startswith("/source/assets/"):
+                import mimetypes
+                filename = path[len("/source/assets/"):]
+                if not filename or "/" in filename or "\\" in filename or filename in (".", ".."):
+                    self._send_json({"ok": False, "error": "not_found"}, status=404)
+                    return
+                try:
+                    with open(asset_path(filename), "rb") as f:
+                        data = f.read()
+                    mime, _ = mimetypes.guess_type(filename)
                     self.send_response(200)
                     self.send_header("Content-Type", mime or "application/octet-stream")
                     self.send_header("Content-Length", str(len(data)))

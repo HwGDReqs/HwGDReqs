@@ -34,6 +34,78 @@ KICK_PROXY_APP_KEY = ""
 LEVEL_ID_PATTERN = r"\b(\d{7,9})\b"
 COMMA_LEVEL_ID_PATTERN = r"\b(\d{1,3}(?:,\d{3})+)\b"
 
+DEFAULT_BROWSER_SOURCE_HTML = """<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>HwGDReqs Queue</title>
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: transparent;
+    font-family: Arial, Helvetica, sans-serif;
+    color: #ffffff;
+    overflow: hidden;
+  }
+
+  #queue-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 6px;
+  }
+
+  .queue-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(0, 0, 0, 0.35);
+    border-radius: 6px;
+    padding: 4px 8px;
+  }
+
+  .difficulty-icon,
+  .platform-icon {
+    width: 24px;
+    height: 24px;
+    flex-shrink: 0;
+    object-fit: contain;
+  }
+
+  .entry-text {
+    flex: 1 1 auto;
+    font-size: 14px;
+    word-wrap: break-word;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+  }
+
+  .index {
+    font-weight: bold;
+    margin-right: 2px;
+  }
+</style>
+</head>
+<body>
+<div id="queue-list">
+<!--QUEUE_ITEM_TEMPLATE-->
+<div class="queue-item">
+  <img class="difficulty-icon" src="{{difficulty-icon}}" alt="">
+  <span class="entry-text"><span class="index">[{{index}}]</span> "<span class="level">{{level}}</span>" by <span class="author">{{author}}</span></span>
+  <img class="platform-icon" src="{{platform-icon}}" alt="">
+</div>
+<!--END_QUEUE_ITEM_TEMPLATE-->
+</div>
+<script>
+  // auto reload every 3 seconds
+  setTimeout(function () {
+    window.location.reload();
+  }, 3000);
+</script>
+</body>
+</html>
+"""
+
 
 def app_root() -> Path:
     if getattr(sys, "frozen", False):

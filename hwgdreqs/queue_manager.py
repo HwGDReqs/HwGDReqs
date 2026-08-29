@@ -112,6 +112,8 @@ class QueueData:
     command_whereami: str = "!whereami"
     command_commands: str = "!commands"
 
+    browser_source_html: str = ""
+
 
 
 
@@ -485,6 +487,17 @@ class QueueManager(QObject):
         # no notify.. not queue data, just UI pref
 
     @property
+    def browser_source_html(self) -> str:
+        with self._lock:
+            return self._data.browser_source_html
+
+    @browser_source_html.setter
+    def browser_source_html(self, value: str) -> None:
+        with self._lock:
+            self._data.browser_source_html = str(value)
+            self.save()
+
+    @property
     def auto_blacklist_on_delete(self) -> bool:
         with self._lock:
             return self._data.auto_blacklist_on_delete
@@ -742,6 +755,7 @@ class QueueManager(QObject):
             command_queue=str(raw.get("command_queue", "!queue")),
             command_whereami=str(raw.get("command_whereami", "!whereami")),
             command_commands=str(raw.get("command_commands", "!commands")),
+            browser_source_html=str(raw.get("browser_source_html", "")),
         )
 
         # Populate missing timestamps
@@ -820,6 +834,7 @@ class QueueManager(QObject):
                 "command_queue": self._data.command_queue,
                 "command_whereami": self._data.command_whereami,
                 "command_commands": self._data.command_commands,
+                "browser_source_html": self._data.browser_source_html,
             }
 
             target_path = queue_file()

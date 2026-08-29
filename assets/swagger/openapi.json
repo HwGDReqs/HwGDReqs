@@ -13,7 +13,7 @@
         "properties": {
           "id": {
             "type": "string",
-            "example": "98006"
+            "example": "10565740"
           },
           "name": {
             "type": "string",
@@ -70,7 +70,7 @@
           "message": {
             "type": "string",
             "description": "Optional message left by the requester.",
-            "example": "Please play this one!"
+            "example": "Please play this one! 10565740"
           },
           "description": {
             "type": "string",
@@ -103,11 +103,11 @@
           },
           "likes": {
             "type": "integer",
-            "example": 15000
+            "example": 5592745
           },
           "downloads": {
             "type": "integer",
-            "example": 2000000
+            "example": 184617340
           },
           "priority": {
             "type": "boolean",
@@ -127,7 +127,7 @@
             "type": "integer",
             "nullable": true,
             "description": "Position of this level on the AREDL list. null if not on the list.",
-            "example": 42
+            "example": 828
           }
         }
       },
@@ -206,7 +206,7 @@
                     "value": {
                       "levels": [
                         {
-                          "id": "98006",
+                          "id": "10565740",
                           "name": "Bloodbath",
                           "author": "Riot",
                           "difficulty": "Extreme Demon",
@@ -214,18 +214,18 @@
                           "requester2": "123456789",
                           "platform": "twitch",
                           "platform_icon": "",
-                          "message": "Please play this!",
-                          "description": "The hardest level.",
+                          "message": "Please play this! 10565740",
+                          "description": "Whose blood will be spilt in the Bloodbath? Who will the victors be? How many will survive? Good luck...",
                           "length": "Long",
                           "large": false,
                           "two_player": false,
                           "disliked": false,
-                          "likes": 15000,
-                          "downloads": 2000000,
+                          "likes": 5592745,
+                          "downloads": 184617340,
                           "priority": false,
-                          "version": 1,
+                          "version": 3,
                           "timestamp": 1700000000.0,
-                          "aredl_position": 42
+                          "aredl_position": 828
                         }
                       ]
                     }
@@ -234,7 +234,7 @@
                     "summary": "Single level by row",
                     "value": {
                       "level": {
-                        "id": "98006",
+                        "id": "10565740",
                         "name": "Bloodbath",
                         "author": "Riot",
                         "difficulty": "Extreme Demon",
@@ -251,7 +251,7 @@
                         "likes": 0,
                         "downloads": 0,
                         "priority": false,
-                        "version": 1,
+                        "version": 3,
                         "timestamp": 0.0,
                         "aredl_position": null
                       }
@@ -350,7 +350,7 @@
                     "summary": "Queue is non-empty",
                     "value": {
                       "level": {
-                        "id": "98006",
+                        "id": "10565740",
                         "name": "Bloodbath",
                         "author": "Riot",
                         "difficulty": "Extreme Demon",
@@ -367,9 +367,9 @@
                         "likes": 0,
                         "downloads": 0,
                         "priority": false,
-                        "version": 1,
+                        "version": 3,
                         "timestamp": 1700000000.0,
-                        "aredl_position": 42
+                        "aredl_position": 828
                       }
                     }
                   },
@@ -421,7 +421,7 @@
                 "example": {
                   "levels": [
                     {
-                      "id": "98006",
+                      "id": "10565740",
                       "name": "Bloodbath",
                       "author": "Riot",
                       "difficulty": "Extreme Demon"
@@ -499,6 +499,31 @@
             }
           }
         }
+      },
+      "post": {
+        "summary": "Get whether requests are currently enabled",
+        "responses": {
+          "200": {
+            "description": "Current requests enabled state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean",
+                      "example": true
+                    }
+                  }
+                },
+                "example": {
+                  "enabled": true
+                }
+              }
+            }
+          }
+        },
+        "description": "Returns the current requests enabled state. (This endpoint works identically to the GET variant.)"
       }
     },
     "/blacklist": {
@@ -519,7 +544,7 @@
                       },
                       "description": "Blacklisted level IDs.",
                       "example": [
-                        "98006",
+                        "10565740",
                         "12345"
                       ]
                     },
@@ -554,6 +579,20 @@
                       ]
                     }
                   }
+                },
+                "example": {
+                  "levels": [
+                    "10565740"
+                  ],
+                  "authors": [
+                    "Riot"
+                  ],
+                  "requesters": [
+                    "SpamUser"
+                  ],
+                  "requester2s": [
+                    "987654321"
+                  ]
                 }
               }
             }
@@ -620,7 +659,7 @@
                   "id": {
                     "type": "string",
                     "description": "GD level ID.",
-                    "example": "98006"
+                    "example": "10565740"
                   },
                   "requester": {
                     "type": "string",
@@ -655,7 +694,7 @@
                 }
               },
               "example": {
-                "id": "98006",
+                "id": "10565740",
                 "requester": "SomeTwitchUser",
                 "platform": "twitch",
                 "message": "please!",
@@ -735,6 +774,10 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "ok": false,
+                  "error": "timeout"
                 }
               }
             }
@@ -759,7 +802,7 @@
                   "id": {
                     "type": "string",
                     "description": "Old level ID to replace.",
-                    "example": "98006"
+                    "example": "10565740"
                   },
                   "new_id": {
                     "type": "string",
@@ -785,7 +828,7 @@
                 }
               },
               "example": {
-                "id": "98006",
+                "id": "10565740",
                 "new_id": "12345",
                 "requester": "API",
                 "platform": "custom"
@@ -827,6 +870,10 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "ok": false,
+                  "error": "not_found"
                 }
               }
             }
@@ -849,12 +896,12 @@
                   "id": {
                     "type": "string",
                     "description": "Level ID to delete.",
-                    "example": "98006"
+                    "example": "10565740"
                   }
                 }
               },
               "example": {
-                "id": "98006"
+                "id": "10565740"
               }
             }
           }
@@ -926,12 +973,12 @@
                   "id": {
                     "type": "string",
                     "description": "Level ID to blacklist.",
-                    "example": "98006"
+                    "example": "10565740"
                   }
                 }
               },
               "example": {
-                "id": "98006"
+                "id": "10565740"
               }
             }
           }
@@ -956,6 +1003,10 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "ok": false,
+                  "error": "missing_id"
                 }
               }
             }
@@ -979,12 +1030,12 @@
                   "id": {
                     "type": "string",
                     "description": "Queue entry level ID whose author to ban.",
-                    "example": "98006"
+                    "example": "10565740"
                   }
                 }
               },
               "example": {
-                "id": "98006"
+                "id": "10565740"
               }
             }
           }
@@ -1009,6 +1060,10 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "ok": false,
+                  "error": "missing_id"
                 }
               }
             }
@@ -1019,6 +1074,10 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "ok": false,
+                  "error": "not_found"
                 }
               }
             }
@@ -1042,12 +1101,12 @@
                   "id": {
                     "type": "string",
                     "description": "Queue entry level ID whose requester to ban.",
-                    "example": "98006"
+                    "example": "10565740"
                   }
                 }
               },
               "example": {
-                "id": "98006"
+                "id": "10565740"
               }
             }
           }
@@ -1072,6 +1131,10 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "ok": false,
+                  "error": "missing_id"
                 }
               }
             }
@@ -1082,6 +1145,10 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "ok": false,
+                  "error": "not_found"
                 }
               }
             }
@@ -1105,12 +1172,12 @@
                   "id": {
                     "type": "string",
                     "description": "Queue entry level ID whose requester to ban on Twitch.",
-                    "example": "98006"
+                    "example": "10565740"
                   }
                 }
               },
               "example": {
-                "id": "98006"
+                "id": "10565740"
               }
             }
           }
@@ -1171,6 +1238,10 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "ok": false,
+                  "error": "not_found"
                 }
               }
             }
@@ -1252,6 +1323,25 @@
                 "example": {
                   "ok": true
                 }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/source/queue": {
+      "get": {
+        "summary": "Get the HTML browser source",
+        "description": "Returns the rendered queue HTML for OBS or other browser sources.",
+        "responses": {
+          "200": {
+            "description": "HTML content.",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                },
+                "example": "<!DOCTYPE html><html><body>Queue...</body></html>"
               }
             }
           }

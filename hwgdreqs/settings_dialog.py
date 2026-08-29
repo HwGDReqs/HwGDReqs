@@ -5,7 +5,7 @@ import subprocess
 from pathlib import Path
 import requests
 from PySide6.QtCore import Signal, Qt, QUrl, QThread, QTimer
-from PySide6.QtGui import QPixmap, QDesktopServices, QGuiApplication
+from PySide6.QtGui import QPixmap, QDesktopServices, QGuiApplication, QFont, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QDialog,
     QHBoxLayout,
@@ -26,9 +26,10 @@ from PySide6.QtWidgets import (
     QApplication,
     QSlider,
     QComboBox,
+    QPlainTextEdit,
 )
 
-from hwgdreqs.config import clear_auth, data_dir, asset_path, exec_dir, APP_VERSION
+from hwgdreqs.config import clear_auth, data_dir, asset_path, exec_dir, APP_VERSION, DEFAULT_BROWSER_SOURCE_HTML
 from hwgdreqs.queue_manager import QueueManager
 from hwgdreqs.login_dialog import TwitchLoginDialog
 from hwgdreqs.twitch_auth import (
@@ -740,7 +741,22 @@ class ApiTab(QWidget):
 
         layout.addStretch()
         
+        swagger_layout = QHBoxLayout()
+        swagger_label = QLabel("API Documentation (Swagger): /swagger")
+        swagger_layout.addWidget(swagger_label)
+        
+        swagger_btn = QPushButton("Visit")
+        swagger_btn.clicked.connect(self._visit_swagger)
+        swagger_layout.addWidget(swagger_btn)
+        swagger_layout.addStretch()
+        layout.addLayout(swagger_layout)
+        
+
         self._update_urls()
+
+    def _visit_swagger(self):
+        port = self._queue.api_local_port
+        QDesktopServices.openUrl(QUrl(f"http://127.0.0.1:{port}/swagger"))
         
     def _update_urls(self):
         # Update local URL
@@ -955,6 +971,153 @@ class ApiTab(QWidget):
         self._queue.api_host_to_network = self._host_network_check.isChecked()
         self._queue.api_network_port = self._network_port_spin.value()
         return True
+
+
+class BrowserSourceEditorDialog(QDialog):
+    def __init__(self, queue: QueueManager, parent=None) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("Customize Browser Source")
+        self.resize(800, 600)
+        self._queue = queue
+        
+        layout = QVBoxLayout(self)
+        
+        self._editor = QPlainTextEdit()
+        self._editor.setPlainText(queue.browser_source_html or DEFAULT_BROWSER_SOURCE_HTML)
+        self._editor.setFont(QFont("Courier New", 10))
+        layout.addWidget(self._editor, 1)
+        
+        buttons_layout = QHBoxLayout()
+        
+        vars_btn = QPushButton("Show available variables")
+        vars_btn.clicked.connect(self._show_variables)
+        buttons_layout.addWidget(vars_btn)
+        
+        reset_btn = QPushButton("Reset to default")
+        reset_btn.clicked.connect(self._reset_to_default)
+        buttons_layout.addWidget(reset_btn)
+        
+        buttons_layout.addStretch()
+        
+        save_btn = QPushButton("Save")
+        save_btn.clicked.connect(self._save)
+        buttons_layout.addWidget(save_btn)
+        
+        save_exit_btn = QPushButton("Save and exit")
+        save_exit_btn.clicked.connect(self._save_and_exit)
+        buttons_layout.addWidget(save_exit_btn)
+        
+        cancel_btn = QPushButton("Cancel")
+        cancel_btn.clicked.connect(self.reject)
+        buttons_layout.addWidget(cancel_btn)
+        
+        layout.addLayout(buttons_layout)
+        
+        self.shortcut = QShortcut(QKeySequence("Ctrl+S"), self)
+        self.shortcut.activated.connect(self._save)
+
+    def _show_variables(self) -> None:
+        from hwgdreqs.browser_source import AVAILABLE_VARIABLES
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Available Variables")
+        dialog.resize(600, 440)
+        dlg_layout = QVBoxLayout(dialog)
+
+        label = QLabel(
+            "Use these as {{variable}} inside the repeating per-entry "
+            "block (between <!--QUEUE_ITEM_TEMPLATE--> and "
+            "<!--END_QUEUE_ITEM_TEMPLATE-->). The same name also works as "
+            "an id/class if you want to target the element with your own "
+            "CSS or JS."
+        )
+        label.setWordWrap(True)
+        dlg_layout.addWidget(label)
+
+        list_widget = QListWidget()
+        for var in AVAILABLE_VARIABLES:
+            item = QListWidgetItem(f"{{{{{var['name']}}}}}  =  {var['description']}")
+            list_widget.addItem(item)
+        dlg_layout.addWidget(list_widget)
+
+        close_btn = QPushButton("Close")
+        close_btn.clicked.connect(dialog.accept)
+        dlg_layout.addWidget(close_btn)
+
+        dialog.exec()
+
+    def _reset_to_default(self) -> None:
+        reply = QMessageBox.question(
+            self,
+            "Reset to default",
+            "Replace the editor content with the built-in default HTML? "
+            "This only affects the editor until you click Save.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            self._editor.setPlainText(DEFAULT_BROWSER_SOURCE_HTML)
+
+    def _save(self) -> None:
+        self._queue.browser_source_html = self._editor.toPlainText()
+        original_title = self.windowTitle()
+        if not original_title.endswith("(Saved!)"):
+            self.setWindowTitle(original_title + " (Saved!)")
+            QTimer.singleShot(2000, lambda: self.setWindowTitle(original_title))
+
+    def _save_and_exit(self) -> None:
+        self._queue.browser_source_html = self._editor.toPlainText()
+        self.accept()
+
+
+class BrowserSourceTab(QWidget):
+    def __init__(self, queue: QueueManager, parent=None) -> None:
+        super().__init__(parent)
+        self._queue = queue
+        layout = QVBoxLayout(self)
+
+        layout.addWidget(QLabel("Browser Source"))
+
+        info_label = QLabel(
+            "This is used to show the queue in a Browser Source for OBS "
+            "so your viewers do see the queue!"
+        )
+        info_label.setWordWrap(True)
+        layout.addWidget(info_label)
+
+        self._url_label = QLabel()
+        self._url_label.setWordWrap(True)
+        self._url_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        layout.addWidget(self._url_label)
+
+        buttons_layout = QHBoxLayout()
+        copy_url_btn = QPushButton("Copy Link")
+        copy_url_btn.clicked.connect(self._copy_url)
+        buttons_layout.addWidget(copy_url_btn)
+        
+        edit_btn = QPushButton("Edit HTML")
+        edit_btn.setToolTip("customize as you like with html + css + javascript shit")
+        edit_btn.clicked.connect(self._open_editor)
+        buttons_layout.addWidget(edit_btn)
+        
+        buttons_layout.addStretch()
+        
+        layout.addLayout(buttons_layout)
+        layout.addStretch()
+
+        self.refresh()
+
+    def refresh(self) -> None:
+        port = self._queue.api_local_port
+        self._url_label.setText(f"Browser Source URL: http://127.0.0.1:{port}/source/queue")
+
+    def _copy_url(self) -> None:
+        port = self._queue.api_local_port
+        QGuiApplication.clipboard().setText(f"http://127.0.0.1:{port}/source/queue")
+
+    def _open_editor(self) -> None:
+        dlg = BrowserSourceEditorDialog(self._queue, self)
+        dlg.exec()
 
 
 class InfoTab(QWidget):
@@ -1443,6 +1606,9 @@ class SettingsDialog(QDialog):
         self._keybinds_tab = KeybindsTab()
         tabs.addTab(self._keybinds_tab, "Keybinds")
 
+        self._browser_source_tab = BrowserSourceTab(queue)
+        tabs.addTab(self._browser_source_tab, "Browser Source")
+
         self._info_tab = InfoTab()
         tabs.addTab(self._info_tab, "Info")
 
@@ -1523,6 +1689,7 @@ class SettingsDialog(QDialog):
         self._levels_tab.refresh()
         self._authors_tab.refresh()
         self._requesters_tab.refresh()
+        self._browser_source_tab.refresh()
 
     def _on_queue_command_toggled(self, checked: bool) -> None:
         if self._queue_command_cb is None:
