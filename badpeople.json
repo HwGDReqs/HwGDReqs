@@ -3,5 +3,9 @@
     "requester_id": 1535050290,
     "platform": "twitch",
     "reason": "sent nsfw level to 'MalikHw47'"
+  }, {
+    "requester_id": 1064644225,
+    "platform": "twitch",
+    "reason": "testing"
   }
 ]
