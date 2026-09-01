@@ -25,7 +25,14 @@ from PySide6.QtWidgets import (
 
 
 class QueueListItemWidget(QWidget):
-    def __init__(self, text: str, platform_icon: QIcon | None, difficulty: str):
+    def __init__(
+        self,
+        text: str,
+        platform_icon: QIcon | None,
+        difficulty: str,
+        bad_requester: bool = False,
+        bad_requester_reason: str = "",
+    ):
         super().__init__()
         layout = QHBoxLayout(self)
         layout.setContentsMargins(5, 5, 5, 5)
@@ -56,6 +63,12 @@ class QueueListItemWidget(QWidget):
         
         self.text_label = QLabel(text)
         self.text_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        if bad_requester:
+            self.text_label.setStyleSheet("color: #ff4d4d;")
+            reason = bad_requester_reason or "reported bad requester"
+            tooltip = f"⚠️ Reported bad requester: {reason}"
+            self.text_label.setToolTip(tooltip)
+            self.setToolTip(tooltip)
         layout.addWidget(self.text_label)
         
         if platform_icon:
@@ -365,6 +378,13 @@ class MainWindow(QMainWindow):
         self._sender_label = QLabel()
         self._sender_label.setWordWrap(True)
         scroll_layout.addWidget(self._sender_label)
+        scroll_layout.addSpacing(10)
+        
+        self._bad_requester_label = QLabel()
+        self._bad_requester_label.setWordWrap(True)
+        self._bad_requester_label.setStyleSheet("color: #ff4d4d; font-weight: bold;")
+        self._bad_requester_label.hide()
+        scroll_layout.addWidget(self._bad_requester_label)
         scroll_layout.addSpacing(10)
         
         self._timestamp_label = QLabel()
@@ -840,7 +860,13 @@ class MainWindow(QMainWindow):
             elif entry.platform == "kick":
                 platform_icon = self._kick_icon
             
-            widget = QueueListItemWidget(text, platform_icon, entry.difficulty)
+            widget = QueueListItemWidget(
+                text,
+                platform_icon,
+                entry.difficulty,
+                bad_requester=getattr(entry, "bad_requester", False),
+                bad_requester_reason=getattr(entry, "bad_requester_reason", ""),
+            )
             item.setSizeHint(widget.sizeHint())
             
             self._list.addItem(item)
@@ -891,7 +917,17 @@ class MainWindow(QMainWindow):
         downloads_text = f"⬇️{entry.downloads}"
         self._description_label.setText(f"{likes_text} {downloads_text}\ndescription: '{entry.description}'")
         
-        self._sender_label.setText(f"from '{entry.requester}'")
+        id_part = f" (ID: {entry.requester2})" if entry.requester2 else ""
+        self._sender_label.setText(f"from '{entry.requester}'{id_part}")
+        
+        if getattr(entry, "bad_requester", False):
+            reason = getattr(entry, "bad_requester_reason", "") or "reported bad requester"
+            self._bad_requester_label.setText(f"⚠️ Reported bad requester: {reason}")
+            self._bad_requester_label.show()
+        else:
+            self._bad_requester_label.clear()
+            self._bad_requester_label.hide()
+        
         if entry.timestamp > 0:
             from datetime import datetime
             time_str = datetime.fromtimestamp(entry.timestamp).strftime("%I:%M %p").lstrip('0')
@@ -947,6 +983,8 @@ class MainWindow(QMainWindow):
         self._author_label.clear()
         self._description_label.clear()
         self._sender_label.clear()
+        self._bad_requester_label.clear()
+        self._bad_requester_label.hide()
         self._timestamp_label.clear()
         self._difficulty_label.clear()
         self._platform_label.clear()
@@ -1551,4 +1589,3 @@ class MainWindow(QMainWindow):
         if self._popout_window:
             self._popout_window.shutdown()
         super().closeEvent(event)
-

@@ -22,6 +22,83 @@ from hwgdreqs.main_window import MainWindow
 from hwgdreqs.queue_manager import QueueManager
 
 
+def _notices_file():
+    return data_dir() / "notices.json"
+
+
+def _has_shown_notice(key: str) -> bool:
+    path = _notices_file()
+    if not path.exists():
+        return False
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return bool(data.get(key, False))
+    except Exception:
+        return False
+
+
+def _mark_notice_shown(key: str) -> None:
+    path = _notices_file()
+    data = {}
+    if path.exists():
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            data = {}
+    data[key] = True
+    try:
+        path.write_text(json.dumps(data), encoding="utf-8")
+    except Exception:
+        pass
+
+
+_BAD_PEOPLE_NOTICE_KEY = "bad_people_reporting_v1"
+
+
+class BadPeopleNoticeDialog(QDialog):
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("NEW! Bad People Reporting.")
+        self.setModal(True)
+        self.setMinimumWidth(480)
+
+        layout = QVBoxLayout(self)
+        layout.setSpacing(16)
+        layout.setContentsMargins(24, 24, 24, 20)
+
+        title = QLabel("NEW! Bad People Reporting.")
+        title_font = title.font()
+        title_font.setBold(True)
+        title_font.setPointSize(title_font.pointSize() + 2)
+        title.setFont(title_font)
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        title.setWordWrap(True)
+        layout.addWidget(title)
+
+        msg = QLabel(
+            "If you've been hit by a troll or NSFW level and want to protect "
+            "other streamers from the same person:<br><br>"
+            "1. Go to the level queue (or the Level History tab in Settings).<br>"
+            "2. Take a screenshot (yes, a screenshot) of the details or the "
+            "exact level entry.<br>"
+            "3. Send it to me either on Discord (<code>malikhw</code>) or via "
+            "<a href=\"https://github.com/HwGDReqs/HwGDReqs/issues\">GitHub Issues</a>.<br><br>"
+            "After I verify the details, I will add them to an online list so "
+            "that anyone using the latest HwGDReqs version will be informed."
+        )
+        msg.setWordWrap(True)
+        msg.setOpenExternalLinks(True)
+        msg.setTextInteractionFlags(Qt.TextInteractionFlag.TextBrowserInteraction)
+        layout.addWidget(msg)
+
+        btn_layout = QHBoxLayout()
+        btn_layout.addStretch()
+        ok_btn = QPushButton("Got it")
+        ok_btn.clicked.connect(self.accept)
+        btn_layout.addWidget(ok_btn)
+        layout.addLayout(btn_layout)
+
+
 def _donate_config_file():
     return data_dir() / "donate_config.json"
 
@@ -142,6 +219,9 @@ def main() -> int:
         report_status("...")
         time.sleep(0.4)
 
+    report_status("checking for known bad requesters...")
+    queue.refresh_bad_people_list()
+
     if not window.startup(report_status if splash else None):
         if splash:
             splash.close()
@@ -154,6 +234,10 @@ def main() -> int:
     window.show()
     window.raise_()
     window.activateWindow()
+
+    if not _has_shown_notice(_BAD_PEOPLE_NOTICE_KEY):
+        BadPeopleNoticeDialog(window).exec()
+        _mark_notice_shown(_BAD_PEOPLE_NOTICE_KEY)
 
     if _should_show_donate():
         dlg = DonationDialog(window)

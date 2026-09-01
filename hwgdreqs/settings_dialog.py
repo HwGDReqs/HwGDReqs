@@ -506,8 +506,17 @@ class HistoryListItemWidget(QWidget):
             self.diff_icon_label.setPixmap(diff_pixmap.scaled(24, 24, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
             layout.addWidget(self.diff_icon_label)
         
-        self.text_label = QLabel(f'"{entry.name}" by {entry.author}')
+        text = f'"{entry.name}" by {entry.author}'
+        if entry.requester2:
+            text += f" (ID: {entry.requester2})"
+        self.text_label = QLabel(text)
         self.text_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        self.text_label.setWordWrap(True)
+        if getattr(entry, "bad_requester", False):
+            self.text_label.setStyleSheet("color: #ff4d4d;")
+            reason = getattr(entry, "bad_requester_reason", "") or "found bad requester"
+            self.text_label.setToolTip(f"🚨 found bad requester: {reason}")
+            self.setToolTip(f"🚨 found bad requester: {reason}")
         layout.addWidget(self.text_label)
         
         platform_icon = None
@@ -584,7 +593,15 @@ class LevelHistoryTab(QWidget):
     def _on_item_clicked(self, item):
         entry = item.data(Qt.ItemDataRole.UserRole)
         if hasattr(self, "_status_label"):
-            self._status_label.setText(f'"{entry.requester}" gave it - \'{entry.id}\'')
+            id_part = f" (ID: {entry.requester2})" if entry.requester2 else ""
+            text = f'"{entry.requester}"{id_part} gave it - \'{entry.id}\''
+            if getattr(entry, "bad_requester", False):
+                reason = getattr(entry, "bad_requester_reason", "") or "reported bad requester"
+                self._status_label.setText(
+                    f'<span style="color:#ff4d4d;">{text}🚨 Reported: {reason}</span>'
+                )
+            else:
+                self._status_label.setText(text)
 
     def _on_item_double_clicked(self, item):
         entry = item.data(Qt.ItemDataRole.UserRole)

@@ -22,6 +22,31 @@ from hwgdreqs.logging_service import (
     log_queue_cleared,
 )
 
+# "Bad People" reporting list
+BAD_PEOPLE_URL = "https://raw.githubusercontent.com/HwGDReqs/HwGDReqs/refs/heads/main/badpeople.json"
+
+def fetch_bad_people() -> dict[str, str]:
+    """Fetch the bad-people list from GitHub. Returns {requester_id: reason}.
+    Never raises - returns an empty dict on any failure (offline, bad json, etc)."""
+    try:
+        import requests
+        resp = requests.get(BAD_PEOPLE_URL, timeout=6)
+        resp.raise_for_status()
+        raw = resp.json()
+    except Exception:
+        return {}
+
+    result: dict[str, str] = {}
+    if isinstance(raw, list):
+        for item in raw:
+            if not isinstance(item, dict):
+                continue
+            requester_id = item.get("requester_id")
+            if requester_id is None:
+                continue
+            result[str(requester_id)] = str(item.get("reason", ""))
+    return result
+
 
 @dataclass
 class LevelEntry:
@@ -47,6 +72,8 @@ class LevelEntry:
     superchat_amount: str = ""
     member: bool = False
     requester2: str = ""
+    bad_requester: bool = False
+    bad_requester_reason: str = ""
 
 import random
 
@@ -129,7 +156,27 @@ class QueueManager(QObject):
         self._lock = threading.RLock()
         self._data = QueueData()
         self._requester_last_request_time: dict[str, float] = {}
+        self._bad_people: dict[str, str] = {}
         self.load()
+
+    def refresh_bad_people_list(self) -> None:
+        """Fetch the latest bad-people list from GitHub. Meant to be called once
+        on app launch (see main.py). Safe to call from a background thread."""
+        bad_people = fetch_bad_people()
+        with self._lock:
+            self._bad_people = bad_people
+
+    def check_bad_requester(self, requester2: str, platform: str) -> tuple[bool, str]:
+        """Returns (is_bad, reason) for a given requester2 id on a given platform.
+        Currently only flags YouTube requesters, since requester2 is the stable
+        platform account id (channel id) there."""
+        if not requester2 or platform != "youtube":
+            return False, ""
+        with self._lock:
+            reason = self._bad_people.get(str(requester2))
+        if reason is None:
+            return False, ""
+        return True, reason
 
     def add_listener(self, callback: Callable[[], None]) -> None:
         # Threading improvement: QueueManager is mutated from the Twitch/YouTube
@@ -684,6 +731,8 @@ class QueueManager(QObject):
                     superchat_amount=entry.get("superchat_amount", ""),
                     member=entry.get("member", False),
                     requester2=entry.get("requester2", ""),
+                    bad_requester=entry.get("bad_requester", False),
+                    bad_requester_reason=entry.get("bad_requester_reason", ""),
                 )
                 for entry in raw.get("levels", [])
             ],
@@ -711,6 +760,8 @@ class QueueManager(QObject):
                     superchat_amount=entry.get("superchat_amount", ""),
                     member=entry.get("member", False),
                     requester2=entry.get("requester2", ""),
+                    bad_requester=entry.get("bad_requester", False),
+                    bad_requester_reason=entry.get("bad_requester_reason", ""),
                 )
                 for entry in raw.get("level_history", [])
             ],
@@ -979,6 +1030,14 @@ class QueueManager(QObject):
 
                 was_empty = len(self._data.levels) == 0
 
+                bad_requester = False
+                bad_requester_reason = ""
+                if requester2 and platform == "youtube":
+                    reason = self._bad_people.get(str(requester2))
+                    if reason is not None:
+                        bad_requester = True
+                        bad_requester_reason = reason
+
                 entry = LevelEntry(
                     id=level_id,
                     name=name,
@@ -1002,6 +1061,8 @@ class QueueManager(QObject):
                     superchat_amount=superchat_amount,
                     member=member,
                     requester2=requester2,
+                    bad_requester=bad_requester,
+                    bad_requester_reason=bad_requester_reason,
                 )
 
                 if priority:
@@ -1113,6 +1174,8 @@ class QueueManager(QObject):
                 superchat_amount=superchat_amount if superchat_amount else (old_level.superchat_amount if old_level else ""),
                 member=member if member else (old_level.member if old_level else False),
                 requester2=old_level.requester2 if old_level else "",
+                bad_requester=old_level.bad_requester if old_level else False,
+                bad_requester_reason=old_level.bad_requester_reason if old_level else "",
             )
 
             self._data.levels[old_index] = entry
