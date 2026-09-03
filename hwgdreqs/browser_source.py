@@ -41,6 +41,7 @@ AVAILABLE_VARIABLES = [
     {"name": "length", "example": "{{length}}", "description": "The level's length category (Tiny, Short, Medium, Long, XL, Plat)."},
     {"name": "message", "example": "{{message}}", "description": "The message attached to the request, if any."},
     {"name": "level-id", "example": "{{level-id}}", "description": "The Geometry Dash level ID."},
+    {"name": "is-requests-on", "example": "{{is-requests-on}}", "description": "Whether requests are currently enabled (true/false)."},
 ]
 
 
@@ -92,4 +93,9 @@ def render_queue_html(template: str, queue: QueueManager, assets_prefix: str = "
         _fill_placeholders(item_template, _entry_variables(i, entry, assets_prefix))
         for i, entry in enumerate(levels)
     )
-    return template[: match.start()] + rendered_items + template[match.end():]
+    result_template = template[: match.start()] + rendered_items + template[match.end():]
+    
+    requests_on = "true" if queue.requests_enabled else "false"
+    result_template = result_template.replace("{{is-requests-on}}", requests_on)
+    
+    return result_template

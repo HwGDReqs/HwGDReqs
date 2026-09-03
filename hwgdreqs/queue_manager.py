@@ -33,7 +33,8 @@ def fetch_bad_people() -> dict[str, str]:
         resp = requests.get(BAD_PEOPLE_URL, timeout=6)
         resp.raise_for_status()
         raw = resp.json()
-    except Exception:
+    except Exception as e:
+        print(f"Error fetching or parsing badpeople.json: {e}")
         return {}
 
     result: dict[str, str] = {}
@@ -167,10 +168,8 @@ class QueueManager(QObject):
             self._bad_people = bad_people
 
     def check_bad_requester(self, requester2: str, platform: str) -> tuple[bool, str]:
-        """Returns (is_bad, reason) for a given requester2 id on a given platform.
-        Currently only flags YouTube requesters, since requester2 is the stable
-        platform account id (channel id) there."""
-        if not requester2 or platform != "youtube":
+        """Returns (is_bad, reason) for a given requester2 id on a given platform."""
+        if not requester2:
             return False, ""
         with self._lock:
             reason = self._bad_people.get(str(requester2))

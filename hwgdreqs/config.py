@@ -49,6 +49,16 @@ DEFAULT_BROWSER_SOURCE_HTML = """<!DOCTYPE html>
     overflow: hidden;
   }
 
+  #requests-status {
+    padding: 6px;
+    font-size: 16px;
+    font-weight: bold;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+  }
+
+  .req-on { color: #4ade80; }
+  .req-off { color: #f87171; }
+
   #queue-list {
     display: flex;
     flex-direction: column;
@@ -87,6 +97,9 @@ DEFAULT_BROWSER_SOURCE_HTML = """<!DOCTYPE html>
 </style>
 </head>
 <body>
+<div id="requests-status">
+  Requests are <span id="req-state"></span>
+</div>
 <div id="queue-list">
 <!--QUEUE_ITEM_TEMPLATE-->
 <div class="queue-item">
@@ -97,6 +110,16 @@ DEFAULT_BROWSER_SOURCE_HTML = """<!DOCTYPE html>
 <!--END_QUEUE_ITEM_TEMPLATE-->
 </div>
 <script>
+  const reqState = "{{is-requests-on}}";
+  const stateEl = document.getElementById("req-state");
+  if (reqState === "true") {
+    stateEl.textContent = "on";
+    stateEl.className = "req-on";
+  } else {
+    stateEl.textContent = "off";
+    stateEl.className = "req-off";
+  }
+
   // auto reload every 3 seconds
   setTimeout(function () {
     window.location.reload();
