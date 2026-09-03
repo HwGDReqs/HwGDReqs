@@ -1029,13 +1029,7 @@ class QueueManager(QObject):
 
                 was_empty = len(self._data.levels) == 0
 
-                bad_requester = False
-                bad_requester_reason = ""
-                if requester2 and platform == "youtube":
-                    reason = self._bad_people.get(str(requester2))
-                    if reason is not None:
-                        bad_requester = True
-                        bad_requester_reason = reason
+                bad_requester, bad_requester_reason = self.check_bad_requester(requester2, platform)
 
                 entry = LevelEntry(
                     id=level_id,
