@@ -3,7 +3,7 @@
 ; Non-commercial use only
 
 #define MyAppName "HwGDReqs"
-#define MyAppVersion "1.11.2"
+#define MyAppVersion "1.11.3"
 #define MyAppPublisher "MalikHw47"
 #define MyAppURL "https://hwgdreqs.github.io"
 #define MyAppExeName "HwGDReqs.exe"
@@ -51,11 +51,18 @@ Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChang
 function IsUpgrade(): Boolean;
 var
   I: Integer;
+  P: String;
 begin
   Result := False;
+  if (Pos('-up', Lowercase(GetCmdTail)) > 0) or (Pos('/up', Lowercase(GetCmdTail)) > 0) then
+  begin
+    Result := True;
+    Exit;
+  end;
   for I := 1 to ParamCount do
   begin
-    if (CompareText(ParamStr(I), '-Up') = 0) or (CompareText(ParamStr(I), '/Up') = 0) then
+    P := Lowercase(ParamStr(I));
+    if (P = '-up') or (P = '/up') or (Pos('-up', P) = 1) or (Pos('/up', P) = 1) then
     begin
       Result := True;
       Exit;
