@@ -397,7 +397,7 @@ class UpdaterTab(QWidget):
     def _run_installer_and_exit(self, installer_path: str) -> None:
         try:
             subprocess.Popen(
-                [installer_path],
+                [installer_path, "-Up"],
                 creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP,
             )
         except Exception:
@@ -431,7 +431,7 @@ def _download_update_for_startup(parent, download_url, dest_file, mode="windows_
         if mode == "windows_installer":
             try:
                 subprocess.Popen(
-                    [dest_file],
+                    [dest_file, "-Up"],
                     creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP,
                 )
             except Exception:

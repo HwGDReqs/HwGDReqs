@@ -3,7 +3,7 @@
 ; Non-commercial use only
 
 #define MyAppName "HwGDReqs"
-#define MyAppVersion "1.11.0"
+#define MyAppVersion "1.11.2"
 #define MyAppPublisher "MalikHw47"
 #define MyAppURL "https://hwgdreqs.github.io"
 #define MyAppExeName "HwGDReqs.exe"
@@ -38,7 +38,7 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [Files]
-Source: "https://github.com/HwGDReqs/HwGDReqs/releases/download/1.11.0/hwgdreqs-windows-portable.zip"; DestDir: "{app}"; DestName: "hwgdreqs-windows-portable.zip"; ExternalSize: "66374861"; Flags: external download extractarchive ignoreversion recursesubdirs createallsubdirs
+Source: "https://github.com/HwGDReqs/HwGDReqs/releases/download/1.11.1/hwgdreqs-windows-portable.zip"; DestDir: "{app}"; DestName: "hwgdreqs-windows-portable.zip"; ExternalSize: "66374861"; Flags: external download extractarchive ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
@@ -46,3 +46,89 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: de
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
+
+[Code]
+function IsUpgrade(): Boolean;
+var
+  I: Integer;
+begin
+  Result := False;
+  for I := 1 to ParamCount do
+  begin
+    if (CompareText(ParamStr(I), '-Up') = 0) or (CompareText(ParamStr(I), '/Up') = 0) then
+    begin
+      Result := True;
+      Exit;
+    end;
+  end;
+end;
+
+function GetExistingInstallDir(): String;
+var
+  InstallDir: String;
+begin
+  InstallDir := '';
+  if Is64BitInstallMode then
+  begin
+    if not RegQueryStringValue(HKCU64, 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{08EF5909-2044-469E-BDE3-6DE680460E8E}_is1', 'Inno Setup: App Path', InstallDir) then
+    begin
+      if not RegQueryStringValue(HKLM64, 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{08EF5909-2044-469E-BDE3-6DE680460E8E}_is1', 'Inno Setup: App Path', InstallDir) then
+      begin
+        if not RegQueryStringValue(HKCU64, 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{08EF5909-2044-469E-BDE3-6DE680460E8E}_is1', 'InstallLocation', InstallDir) then
+        begin
+          RegQueryStringValue(HKLM64, 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{08EF5909-2044-469E-BDE3-6DE680460E8E}_is1', 'InstallLocation', InstallDir);
+        end;
+      end;
+    end;
+  end;
+
+  if InstallDir = '' then
+  begin
+    if not RegQueryStringValue(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{08EF5909-2044-469E-BDE3-6DE680460E8E}_is1', 'Inno Setup: App Path', InstallDir) then
+    begin
+      if not RegQueryStringValue(HKLM, 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{08EF5909-2044-469E-BDE3-6DE680460E8E}_is1', 'Inno Setup: App Path', InstallDir) then
+      begin
+        if not RegQueryStringValue(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{08EF5909-2044-469E-BDE3-6DE680460E8E}_is1', 'InstallLocation', InstallDir) then
+        begin
+          RegQueryStringValue(HKLM, 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{08EF5909-2044-469E-BDE3-6DE680460E8E}_is1', 'InstallLocation', InstallDir);
+        end;
+      end;
+    end;
+  end;
+  Result := InstallDir;
+end;
+
+procedure InitializeWizard();
+var
+  PrevDir: String;
+begin
+  if IsUpgrade() then
+  begin
+    PrevDir := GetExistingInstallDir();
+    if PrevDir <> '' then
+    begin
+      WizardForm.DirEdit.Text := PrevDir;
+    end;
+  end;
+end;
+
+function ShouldSkipPage(PageID: Integer): Boolean;
+begin
+  Result := False;
+  if IsUpgrade() then
+  begin
+    case PageID of
+      wpWelcome,
+      wpLicense,
+      wpPassword,
+      wpInfoBefore,
+      wpUserInfo,
+      wpSelectDir,
+      wpSelectComponents,
+      wpSelectProgramGroup,
+      wpSelectTasks,
+      wpReady:
+        Result := True;
+    end;
+  end;
+end;
