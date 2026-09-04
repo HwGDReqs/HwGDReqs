@@ -3,7 +3,7 @@
 ; Non-commercial use only
 
 #define MyAppName "HwGDReqs"
-#define MyAppVersion "1.11.3"
+#define MyAppVersion "1.11.4"
 #define MyAppPublisher "MalikHw47"
 #define MyAppURL "https://hwgdreqs.github.io"
 #define MyAppExeName "HwGDReqs.exe"

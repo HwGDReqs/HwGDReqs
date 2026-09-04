@@ -1,7 +1,7 @@
 # .SRCINFO
 pkgbase = hwgdreqs
     pkgdesc = Geometry Dash level request manager for streamers with Twitch and YouTube chat integration
-    pkgver = 1.11.3
+    pkgver = 1.11.4
     pkgrel = 1
     url = https://github.com/HwGDReqs/HwGDReqs
     install = 
@@ -16,7 +16,7 @@ pkgbase = hwgdreqs
     depends = python-requests
     depends = python-cryptography
     depends = yt-dlp
-    source = hwgdreqs-1.11.3.tar.gz::https://github.com/HwGDReqs/HwGDReqs/archive/1.11.3.tar.gz
+    source = hwgdreqs-1.11.4.tar.gz::https://github.com/HwGDReqs/HwGDReqs/archive/1.11.4.tar.gz
     sha256sums = SKIP
 
 pkgname = hwgdreqs

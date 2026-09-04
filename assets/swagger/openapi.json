@@ -2,7 +2,7 @@
   "openapi": "3.0.0",
   "info": {
     "title": "HwGDReqs API",
-    "version": "1.11.3",
+    "version": "1.11.4",
     "description": "API for interacting with the HwGDReqs Geometry Dash level request queue. All endpoints are served locally (default: http://127.0.0.1:6767). CORS is open (*) — usable from any frontend or OBS browser source."
   },
   "components": {
