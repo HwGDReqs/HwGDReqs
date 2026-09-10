@@ -24,6 +24,9 @@ from hwgdreqs.config import (
     load_kick_auth,
     save_kick_auth,
 )
+from hwgdreqs.logging_service import get_logger
+
+logger = get_logger()
 
 
 class KickAuthError(Exception):
@@ -362,5 +365,5 @@ def check_kick_user_exists(session: KickSession, target_username: str) -> bool:
         if response.status_code == 200:
             return True
     except Exception:
-        pass
+        logger.debug(f"check_kick_user_exists failed for {target_username!r}", exc_info=True)
     return False

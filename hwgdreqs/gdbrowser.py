@@ -52,12 +52,22 @@ def fetch_level(level_id: str) -> dict:
 
 
 
+def _safe_int(value, default: int = 0) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
 def fetch_level_normalized(level_id: str) -> dict:
     data = dict(fetch_level(level_id))
     difficulty = str(data.get("difficulty", "Unrated"))
     if difficulty in ("NA", "Unknown"):
         difficulty = "Unrated"
     data["difficulty"] = difficulty
+    data["likes"] = _safe_int(data.get("likes"), 0)
+    data["downloads"] = _safe_int(data.get("downloads"), 0)
+    data["version"] = _safe_int(data.get("version"), 0)
     return data
 
 
@@ -76,4 +86,3 @@ def placeholder_level_data(level_id: str) -> dict:
         "downloads": 0,
         "version": 0,
     }
-

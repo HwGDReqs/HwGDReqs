@@ -10,6 +10,9 @@ from hwgdreqs.queue_manager import QueueManager
 from hwgdreqs.twitch_auth import TwitchSession, get_channel_moderate_enabled, ban_twitch_user
 from hwgdreqs.config import asset_path, DEFAULT_BROWSER_SOURCE_HTML
 from hwgdreqs.browser_source import render_queue_html
+from hwgdreqs.logging_service import get_logger
+
+logger = get_logger()
 
 
 import urllib.request
@@ -90,6 +93,16 @@ def _make_handler(queue: QueueManager, session: TwitchSession | None = None, cha
             return None
 
         def do_GET(self) -> None:
+            try:
+                self._do_GET()
+            except Exception:
+                logger.exception("Unhandled error in GET %s", self.path)
+                try:
+                    self._send_json({"ok": False, "error": "internal_error"}, status=500)
+                except Exception:
+                    pass
+
+        def _do_GET(self) -> None:
             path = urlparse(self.path).path
 
             if path == "/callback":
@@ -259,6 +272,16 @@ def _make_handler(queue: QueueManager, session: TwitchSession | None = None, cha
             self._send_json({"ok": False, "error": "not_found"}, status=404)
 
         def do_DELETE(self) -> None:
+            try:
+                self._do_DELETE()
+            except Exception:
+                logger.exception("Unhandled error in DELETE %s", self.path)
+                try:
+                    self._send_json({"ok": False, "error": "internal_error"}, status=500)
+                except Exception:
+                    pass
+
+        def _do_DELETE(self) -> None:
             path = urlparse(self.path).path
             if path == "/queue":
                 queue.clear_queue()
@@ -267,6 +290,16 @@ def _make_handler(queue: QueueManager, session: TwitchSession | None = None, cha
             self._send_json({"ok": False, "error": "not_found"}, status=404)
 
         def do_POST(self) -> None:
+            try:
+                self._do_POST()
+            except Exception:
+                logger.exception("Unhandled error in POST %s", self.path)
+                try:
+                    self._send_json({"ok": False, "error": "internal_error"}, status=500)
+                except Exception:
+                    pass
+
+        def _do_POST(self) -> None:
             path = urlparse(self.path).path
             params = self._params()
             level_id = params.get("id") or params.get("level_id") or ""

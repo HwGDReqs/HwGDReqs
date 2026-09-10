@@ -1,4 +1,5 @@
 import json
+import math
 import os
 import tempfile
 import threading
@@ -20,7 +21,10 @@ from hwgdreqs.logging_service import (
     log_level_unblacklisted,
     log_author_unblacklisted,
     log_queue_cleared,
+    get_logger,
 )
+
+logger = get_logger()
 
 # "Bad People" reporting list
 BAD_PEOPLE_URL = "https://raw.githubusercontent.com/HwGDReqs/HwGDReqs/refs/heads/main/badpeople.json"
@@ -506,7 +510,7 @@ class QueueManager(QObject):
             from hwgdreqs.logging_service import update_console_logging
             update_console_logging(bool(value))
         except Exception:
-            pass
+            logger.debug("Failed to update console logging setting", exc_info=True)
 
     @property
     def requests_enabled(self) -> bool:
@@ -666,7 +670,7 @@ class QueueManager(QObject):
             now = time.time()
             last_time = self._requester_last_request_time.get(requester.lower(), 0.0)
             remaining = self._data.requester_cooldown - (now - last_time)
-            return max(0, int(remaining))
+            return max(0, math.ceil(remaining))
 
     def update_cooldown(self, requester: str) -> None:
         with self._lock:

@@ -33,7 +33,7 @@ def get_channel_info(username: str) -> dict:
         "Accept": "application/json",
         "Referer": f"https://kick.com/{username}"
     }
-    response = cffi_requests.get(url, headers=headers, impersonate="chrome")
+    response = cffi_requests.get(url, headers=headers, impersonate="chrome", timeout=15)
     response.raise_for_status()
     data = response.json()
     broadcaster_user_id = data.get("user_id") or (data.get("user") or {}).get("id")
@@ -529,7 +529,7 @@ class KickChatWorker(QObject):
     def _enqueue_placeholder(self, requester: str, level_id: str, message: str, priority: bool, reason: str = "", status_text: str | None = None, requester2: str = "") -> bool:
         if not self._queue.allow_any_level:
             logger.warning(f"Failed to fetch level {level_id} ({reason})")
-            self._send_chat_message(f"[HwGDReqs] @{requester} your level \"{level_id}\" could not be added because of Filters")
+            self._maybe_send("filtered_out", f"[HwGDReqs] @{requester} your level \"{level_id}\" could not be added because of Filters")
             return False
         placeholder = placeholder_level_data(level_id)
         added = self._queue.add_level(

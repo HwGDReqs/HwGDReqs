@@ -517,7 +517,7 @@ class TwitchChatWorker(QObject):
         """
         if not self._queue.allow_any_level:
             logger.warning(f"Failed to fetch level {level_id} ({reason})")
-            self._send_chat_message(f"[HwGDReqs] @{requester} your level \"{level_id}\" could not be added because of Filters")
+            self._maybe_send("filtered_out", f"[HwGDReqs] @{requester} your level \"{level_id}\" could not be added because of Filters")
             return False
         placeholder = placeholder_level_data(level_id)
         added = self._queue.add_level(
@@ -554,4 +554,3 @@ class TwitchChatWorker(QObject):
             else:
                 self._maybe_send("filtered_out", f"[HwGDReqs] @{requester} your level \"{level_id}\" could not be added because of Filters")
         return added
-

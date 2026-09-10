@@ -20,6 +20,9 @@ from PySide6.QtWidgets import (
 )
 
 from hwgdreqs.config import APP_VERSION, exec_dir
+from hwgdreqs.logging_service import get_logger
+
+logger = get_logger()
 
 
 def _detect_run_mode() -> str:
@@ -51,7 +54,7 @@ def _detect_run_mode() -> str:
                 if origin.startswith(os.path.normcase(os.path.abspath(sp))):
                     return "pip"
     except Exception:
-        pass
+        logger.debug("Failed to detect pip run mode", exc_info=True)
     
     return "source"
 
@@ -69,6 +72,9 @@ def _is_update_available(latest: str, current: str) -> bool:
     latest_t = _parse_version(latest)
     current_t = _parse_version(current)
     if latest_t is not None and current_t is not None:
+        length = max(len(latest_t), len(current_t))
+        latest_t = latest_t + (0,) * (length - len(latest_t))
+        current_t = current_t + (0,) * (length - len(current_t))
         return latest_t > current_t
     return latest.strip().lower().lstrip("v") != current.strip().lower().lstrip("v")
 
@@ -176,6 +182,10 @@ class UpdateDownloadWorker(QThread):
 
     def _verify(self, hasher) -> bool:
         if not self._expected_digest:
+            logger.warning(
+                "No published digest for this release asset; skipping "
+                "checksum verification (downloaded file was not integrity-checked)."
+            )
             return True
         actual = f"sha256:{hasher.hexdigest()}"
         if actual == self._expected_digest:
@@ -193,7 +203,7 @@ class UpdateDownloadWorker(QThread):
             if os.path.exists(self.dest_path):
                 os.remove(self.dest_path)
         except Exception:
-            pass
+            logger.debug(f"Failed to clean up partial download {self.dest_path!r}", exc_info=True)
 
 
 class UpdaterTab(QWidget):
@@ -400,8 +410,15 @@ class UpdaterTab(QWidget):
                 [installer_path, "-Up"],
                 creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP,
             )
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"Failed to launch installer {installer_path!r}: {e}")
+            QMessageBox.warning(
+                self,
+                "Update Failed",
+                f"The installer could not be launched:\n{e}\n\n"
+                f"You can run it manually from:\n{installer_path}",
+            )
+            return
 
         QApplication.quit()
         sys.exit(0)
@@ -434,9 +451,16 @@ def _download_update_for_startup(parent, download_url, dest_file, mode="windows_
                     [dest_file, "-Up"],
                     creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP,
                 )
-            except Exception:
-                pass
-            
+            except Exception as e:
+                logger.warning(f"Failed to launch installer {dest_file!r}: {e}")
+                QMessageBox.warning(
+                    parent,
+                    "Update Failed",
+                    f"The installer could not be launched:\n{e}\n\n"
+                    f"You can run it manually from:\n{dest_file}",
+                )
+                return
+
             QApplication.quit()
             sys.exit(0)
         elif mode == "macos_dmg":
