@@ -324,8 +324,10 @@ jobs:
   # ------------------------Discord Notification------------------------
   discord-notification:
     runs-on: ubuntu-latest
-    needs: [publish-to-pypi, windows-build-online, windows-build, macos-intel-build, macos-silicon-build, arch-linux-build]
+    # needs: [publish-to-pypi, windows-build-online, windows-build, macos-intel-build, macos-silicon-build, arch-linux-build]
     if: always() && github.event.inputs.release_tag != ''
+    permissions:
+      contents: read
     steps:
       - name: Send Discord Webhook
         env:
