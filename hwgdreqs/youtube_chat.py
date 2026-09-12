@@ -369,6 +369,20 @@ class YoutubeChatWorker(QObject):
                                     level_ids.append(lid)
 
                             if level_ids:
+                                if self._queue.punishment_system_enabled:
+                                    non_punished_ids = []
+                                    for level_id in level_ids:
+                                        punished, count = self._queue.record_level_submission(author, level_id)
+                                        if punished:
+                                            self._queue.remove_level(level_id)
+                                            self._queue.blacklist_level(level_id)
+                                            self.status_changed.emit(f"Punished @{author} for sending level {level_id} {count} times")
+                                        else:
+                                            non_punished_ids.append(level_id)
+                                    level_ids = non_punished_ids
+                                    if not level_ids:
+                                        continue
+
                                 if self._queue.is_on_cooldown(author):
                                     continue
 

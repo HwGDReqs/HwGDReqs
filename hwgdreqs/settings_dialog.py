@@ -337,6 +337,45 @@ class GeneralTab(QWidget):
         self._queue.queue_popout_scale = self._popout_scale_slider.value() / 100.0
 
 
+class PunishmentTab(QWidget):
+    def __init__(self, queue: QueueManager, parent=None) -> None:
+        super().__init__(parent)
+        self._queue = queue
+
+        layout = QVBoxLayout(self)
+
+        desc_label = QLabel("if a viewer keeps spamming your chat with the same ID: here is a way to teach them a lesson >:3")
+        desc_label.setWordWrap(True)
+        layout.addWidget(desc_label)
+        layout.addSpacing(10)
+
+        self._punishment_toggle_cb = QCheckBox("Punishment system toggle")
+        self._punishment_toggle_cb.setChecked(queue.punishment_system_enabled)
+        self._punishment_toggle_cb.toggled.connect(self._on_toggle)
+        layout.addWidget(self._punishment_toggle_cb)
+
+        layout.addSpacing(10)
+        limit_layout = QHBoxLayout()
+        limit_layout.addWidget(QLabel("how many till deletion:"))
+        self._limit_spinbox = QSpinBox()
+        self._limit_spinbox.setRange(1, 999)
+        self._limit_spinbox.setValue(queue.punishment_submission_limit)
+        self._limit_spinbox.setToolTip("Number of times a viewer can submit the same level ID before being punished")
+        self._limit_spinbox.setEnabled(queue.punishment_system_enabled)
+        limit_layout.addWidget(self._limit_spinbox)
+        limit_layout.addStretch()
+        layout.addLayout(limit_layout)
+
+        layout.addStretch()
+
+    def _on_toggle(self, checked: bool) -> None:
+        self._limit_spinbox.setEnabled(checked)
+
+    def apply(self) -> None:
+        self._queue.punishment_system_enabled = self._punishment_toggle_cb.isChecked()
+        self._queue.punishment_submission_limit = self._limit_spinbox.value()
+
+
 class EditableCommandLabel(QWidget):
     def __init__(self, initial_text, on_changed_callback, parent=None):
         super().__init__(parent)
@@ -1335,6 +1374,9 @@ class SettingsDialog(QDialog):
         self._commands_tab = CommandsTab(self._queue, show_queue_command=has_chat_edit_scope())
         tabs.addTab(self._commands_tab, "Commands")
 
+        self._punishment_tab = PunishmentTab(queue)
+        tabs.addTab(self._punishment_tab, "Punishment System")
+
         twitch_tab = QWidget()
         twitch_tab_outer_layout = QVBoxLayout(twitch_tab)
         twitch_tab_outer_layout.setContentsMargins(0, 0, 0, 0)
@@ -1655,6 +1697,7 @@ class SettingsDialog(QDialog):
     def _on_close(self) -> None:
         self._general_tab.apply()
         self._filters_tab.apply_filters()
+        self._punishment_tab.apply()
         # ApiTab.apply() returns False if the user was warned about a port
         # conflict/privileged port and chose not to proceed; keep the dialog
         # open in that case instead of discarding the warning silently.

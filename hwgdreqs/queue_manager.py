@@ -144,6 +144,10 @@ class QueueData:
     command_whereami: str = "!whereami"
     command_commands: str = "!commands"
 
+    # punishment system
+    punishment_system_enabled: bool = False
+    punishment_submission_limit: int = 3
+
     browser_source_html: str = ""
 
 
@@ -161,6 +165,7 @@ class QueueManager(QObject):
         self._lock = threading.RLock()
         self._data = QueueData()
         self._requester_last_request_time: dict[str, float] = {}
+        self._punishment_counts: dict[tuple[str, str], int] = {}
         self._bad_people: dict[str, str] = {}
         self.load()
 
@@ -572,6 +577,30 @@ class QueueManager(QObject):
         self._notify()
 
     @property
+    def punishment_system_enabled(self) -> bool:
+        with self._lock:
+            return self._data.punishment_system_enabled
+
+    @punishment_system_enabled.setter
+    def punishment_system_enabled(self, value: bool) -> None:
+        with self._lock:
+            self._data.punishment_system_enabled = bool(value)
+            self.save()
+        self._notify()
+
+    @property
+    def punishment_submission_limit(self) -> int:
+        with self._lock:
+            return self._data.punishment_submission_limit
+
+    @punishment_submission_limit.setter
+    def punishment_submission_limit(self, value: int) -> None:
+        with self._lock:
+            self._data.punishment_submission_limit = max(1, int(value))
+            self.save()
+        self._notify()
+
+    @property
     def twitch_bot_disabled_replies(self) -> list:
         with self._lock:
             return list(self._data.twitch_bot_disabled_replies)
@@ -682,6 +711,16 @@ class QueueManager(QObject):
                 return False
             self.update_cooldown(requester)
             return True
+
+    def record_level_submission(self, requester: str, level_id: str, is_broadcaster: bool = False) -> tuple[bool, int]:
+        with self._lock:
+            if not self._data.punishment_system_enabled:
+                return False, 0
+            key = (requester.lower(), str(level_id))
+            count = self._punishment_counts.get(key, 0) + 1
+            self._punishment_counts[key] = count
+            is_punished = count >= self._data.punishment_submission_limit
+            return is_punished, count
 
     def get_requester_level_count(self, requester: str) -> int:
         with self._lock:
@@ -802,6 +841,8 @@ class QueueManager(QObject):
             requests_enabled=bool(raw.get("requests_enabled", True)),
             auto_blacklist_on_delete=bool(raw.get("auto_blacklist_on_delete", False)),
             auto_blacklist_unless_updated=bool(raw.get("auto_blacklist_unless_updated", False)),
+            punishment_system_enabled=bool(raw.get("punishment_system_enabled", False)),
+            punishment_submission_limit=int(raw.get("punishment_submission_limit", 3)),
             twitch_bot_disabled_replies=list(raw.get("twitch_bot_disabled_replies", [])),
             twitch_bot_no_prefix=bool(raw.get("twitch_bot_no_prefix", False)),
             command_del=str(raw.get("command_del", "!del")),
@@ -881,6 +922,8 @@ class QueueManager(QObject):
                 "requests_enabled": self._data.requests_enabled,
                 "auto_blacklist_on_delete": self._data.auto_blacklist_on_delete,
                 "auto_blacklist_unless_updated": self._data.auto_blacklist_unless_updated,
+                "punishment_system_enabled": self._data.punishment_system_enabled,
+                "punishment_submission_limit": self._data.punishment_submission_limit,
                 "twitch_bot_disabled_replies": self._data.twitch_bot_disabled_replies,
                 "twitch_bot_no_prefix": self._data.twitch_bot_no_prefix,
                 "command_del": self._data.command_del,

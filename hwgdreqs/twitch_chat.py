@@ -220,6 +220,24 @@ class TwitchChatWorker(QObject):
                 level_ids.append(lid)
 
         if level_ids:
+            if self._queue.punishment_system_enabled:
+                non_punished_ids = []
+                for level_id in level_ids:
+                    punished, count = self._queue.record_level_submission(requester, level_id)
+                    if punished:
+                        self._queue.remove_level(level_id)
+                        self._queue.blacklist_level(level_id)
+                        limit = self._queue.punishment_submission_limit
+                        if getattr(self._session, "chat_edit_scope", False):
+                            self._send_chat_message(
+                                f"[HwGDReqs] @{requester} you are punished for sending ID more than {limit} times, deleted the level and do not submit again for this stream"
+                            )
+                        self.status_changed.emit(f"Punished @{requester} for sending level {level_id} {count} times")
+                    else:
+                        non_punished_ids.append(level_id)
+                level_ids = non_punished_ids
+                if not level_ids:
+                    return
             if self._queue.is_on_cooldown(requester):
                 remaining = self._queue.get_remaining_cooldown(requester)
                 self._maybe_send(
@@ -354,7 +372,6 @@ class TwitchChatWorker(QObject):
     def _send_chat_message(self, message: str) -> None:
         channel = (self._queue.twitch_bot_channel_name or self._session.login).lower()
         safe_message = message.replace("\r", " ").replace("\n", " ")
-        # strip [HwGDReqs] prefix if the user wants that
         if self._queue.twitch_bot_no_prefix:
             safe_message = safe_message.replace("[HwGDReqs] ", "").replace("[HwGDReqs]", "")
         sock = self._socket
