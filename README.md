@@ -8,6 +8,7 @@ a GD level requests app for streamers
 
 * Twitch Chat Monitoring: Listens for level IDs in Twitch chat (Device flow login)
 * YouTube Chat Monitoring: Listens for level IDs in YouTube live chat (no login, just username)
+* Kick Chat Monitoring: Listens for level IDs in Kick chat **(paused support)**
 * Thumbnails: using \[Level Thumbnails](https://levelthumbs.prevter.me/) API to see kevel thumbs on the app
 * Queue Management to viewers: Add, remove, and replace levels (only to same requester)
 * Blacklist System: Block levels, authors, or requesters
@@ -53,9 +54,25 @@ a GD level requests app for streamers
 * YouTube Refresh Button: Manual refresh when stream starts
 * Blacklist Timestamps: Tracks when things were blacklisted
 * Priority Levels: Levels can be marked priority and inserted at front
+* OBS Browser Source Support: Export the queue as an HTML page for OBS Browser Source
+* Geode Mod Integration Installer: Built-in tool to install the companion Geode mod for in-game integration
+* Cloudflare Tunnel Integration: Expose the local API server securely via Cloudflare tunnels (`cloudflared` as a dependency)
+* Desktop Notification for new level to queue while it being empty
 
 what the fuck did i do
 
 Site: https://hwgdreqs.github.io
 
 made by MalikHw47
+
+---
+
+### mDNS Discovery built in! We need an android client
+When the network API server is enabled, the app broadcasts its presence on the local network via mDNS/Bonjour.
+- **Service Type:** `_hwgdreqs._tcp.local.`
+- **TXT Properties:**
+  - `port`: The API server's port (string)
+  - `name`: Always "HwGDReqs"
+  - `version`: The current app version
+  - `path`: Always "/"
+  - `login`: The active user's(twitch/youtube) login username, or `""` if none.

@@ -7,3 +7,4 @@ keyring
 qrcode
 curl_cffi
 websockets
+zeroconf

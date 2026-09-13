@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "hwgdreqs"
-version = "1.12.0"
+version = "1.12.1"
 description = "A Geometry Dash level requests app for streamers"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -37,7 +37,8 @@ dependencies = [
   "yt-dlp",
   "pytchat",
   "curl_cffi",
-  "websockets"
+  "websockets",
+  "zeroconf"
 ]
 
 [project.scripts]

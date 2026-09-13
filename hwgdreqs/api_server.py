@@ -105,6 +105,10 @@ def _make_handler(queue: QueueManager, session: TwitchSession | None = None, cha
         def _do_GET(self) -> None:
             path = urlparse(self.path).path
 
+            if path == "/health":
+                self._send_json({"ok": True})
+                return
+
             if path == "/callback":
                 params = self._params()
                 code = params.get("code")
@@ -518,6 +522,8 @@ def _make_handler(queue: QueueManager, session: TwitchSession | None = None, cha
 
 
 _active_api_server: ApiServer | None = None
+_zeroconf = None
+_service_info = None
 
 
 class ApiServer:
@@ -586,6 +592,36 @@ class ApiServer:
                     self._network_thread = threading.Thread(target=self._network_httpd.serve_forever, daemon=True)
                     self._network_thread.start()
                     success = True
+
+                    global _zeroconf, _service_info
+                    if _zeroconf is None:
+                        try:
+                            from zeroconf import Zeroconf, ServiceInfo
+                            from hwgdreqs.config import get_local_ip, APP_VERSION
+                            import socket
+
+                            ip = get_local_ip()
+                            desc = {
+                                "port": str(self._network_port),
+                                "name": "HwGDReqs",
+                                "version": APP_VERSION,
+                                "path": "/",
+                                "login": self._session.login if self._session else ""
+                            }
+                            
+                            _service_info = ServiceInfo(
+                                "_hwgdreqs._tcp.local.",
+                                "HwGDReqs._hwgdreqs._tcp.local.",
+                                addresses=[socket.inet_aton(ip)],
+                                port=self._network_port,
+                                properties=desc,
+                                server=f"{ip.replace('.', '-')}.local.",
+                            )
+                            _zeroconf = Zeroconf()
+                            _zeroconf.register_service(_service_info)
+                            logger.info("Registered mDNS service")
+                        except Exception as e:
+                            logger.error("Failed to register mDNS service: %s", e)
                 except OSError:
                     pass
         
@@ -615,3 +651,13 @@ class ApiServer:
             except OSError:
                 pass
             self._network_httpd = None
+
+            global _zeroconf, _service_info
+            if _zeroconf is not None:
+                try:
+                    _zeroconf.unregister_service(_service_info)
+                    _zeroconf.close()
+                except Exception as e:
+                    logger.error("Failed to unregister mDNS service: %s", e)
+                _zeroconf = None
+                _service_info = None
