@@ -79,6 +79,7 @@ class LevelEntry:
     requester2: str = ""
     bad_requester: bool = False
     bad_requester_reason: str = ""
+    potentially_unlisted: bool = False
 
 import random
 
@@ -149,6 +150,9 @@ class QueueData:
     punishment_submission_limit: int = 3
 
     browser_source_html: str = ""
+
+    # allow potentially unlisted levels (dashlib)
+    allow_potentially_unlisted: bool = True
 
 
 
@@ -775,6 +779,7 @@ class QueueManager(QObject):
                     requester2=entry.get("requester2", ""),
                     bad_requester=entry.get("bad_requester", False),
                     bad_requester_reason=entry.get("bad_requester_reason", ""),
+                    potentially_unlisted=entry.get("potentially_unlisted", False),
                 )
                 for entry in raw.get("levels", [])
             ],
@@ -804,6 +809,7 @@ class QueueManager(QObject):
                     requester2=entry.get("requester2", ""),
                     bad_requester=entry.get("bad_requester", False),
                     bad_requester_reason=entry.get("bad_requester_reason", ""),
+                    potentially_unlisted=entry.get("potentially_unlisted", False),
                 )
                 for entry in raw.get("level_history", [])
             ],
@@ -839,6 +845,7 @@ class QueueManager(QObject):
             print_full_log_to_console=bool(raw.get("print_full_log_to_console", False)),
             queue_popout_scale=float(raw.get("queue_popout_scale", 1.0)),
             requests_enabled=bool(raw.get("requests_enabled", True)),
+            allow_potentially_unlisted=bool(raw.get("allow_potentially_unlisted", True)),
             auto_blacklist_on_delete=bool(raw.get("auto_blacklist_on_delete", False)),
             auto_blacklist_unless_updated=bool(raw.get("auto_blacklist_unless_updated", False)),
             punishment_system_enabled=bool(raw.get("punishment_system_enabled", False)),
@@ -932,6 +939,7 @@ class QueueManager(QObject):
                 "command_whereami": self._data.command_whereami,
                 "command_commands": self._data.command_commands,
                 "browser_source_html": self._data.browser_source_html,
+                "allow_potentially_unlisted": self._data.allow_potentially_unlisted,
             }
 
             target_path = queue_file()
@@ -992,6 +1000,18 @@ class QueueManager(QObject):
             self.save()
         self._notify()
 
+    @property
+    def allow_potentially_unlisted(self):
+        with self._lock:
+            return self._data.allow_potentially_unlisted
+
+    @allow_potentially_unlisted.setter
+    def allow_potentially_unlisted(self, value):
+        with self._lock:
+            self._data.allow_potentially_unlisted = value
+            self.save()
+        self._notify()
+
     def add_level(
         self,
         *,
@@ -1017,6 +1037,7 @@ class QueueManager(QObject):
         superchat_amount: str = "",
         member: bool = False,
         requester2: str = "",
+        potentially_unlisted: bool = False,
     ) -> bool:
         level_id = str(level_id)
         author_lower = author.lower()
@@ -1103,6 +1124,7 @@ class QueueManager(QObject):
                     requester2=requester2,
                     bad_requester=bad_requester,
                     bad_requester_reason=bad_requester_reason,
+                    potentially_unlisted=potentially_unlisted,
                 )
 
                 if priority:
@@ -1174,6 +1196,7 @@ class QueueManager(QObject):
         superchat: bool = False,
         superchat_amount: str = "",
         member: bool = False,
+        potentially_unlisted: bool = False,
     ) -> None:
 
         with self._lock:
@@ -1216,6 +1239,7 @@ class QueueManager(QObject):
                 requester2=old_level.requester2 if old_level else "",
                 bad_requester=old_level.bad_requester if old_level else False,
                 bad_requester_reason=old_level.bad_requester_reason if old_level else "",
+                potentially_unlisted=potentially_unlisted,
             )
 
             self._data.levels[old_index] = entry

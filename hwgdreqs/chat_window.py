@@ -35,14 +35,17 @@ class _ChatView(QPlainTextEdit):
         font = QFont("Segoe UI", 9)
         self.setFont(font)
 
-    def add_message(self, username: str, text: str) -> None:
+    def add_message(self, username: str, text: str, color: str = "") -> None:
         self._usernames.append(username)
 
         cursor = self.textCursor()
         cursor.movePosition(QTextCursor.MoveOperation.End)
 
         fmt_name = cursor.blockCharFormat()
-        fmt_name.setForeground(QColor("#9b59b6"))
+        if color:
+            fmt_name.setForeground(QColor(color))
+        else:
+            fmt_name.setForeground(QColor("#9b59b6"))
         fmt_name.setFontWeight(QFont.Weight.Bold)
 
         fmt_text = cursor.blockCharFormat()
@@ -155,9 +158,9 @@ class ChatWindow(QDialog):
 
     # Public API
 
-    def on_message(self, username: str, text: str) -> None:
+    def on_message(self, username: str, text: str, color: str = "") -> None:
         """Append an incoming message to the log."""
-        self._view.add_message(username, text)
+        self._view.add_message(username, text, color)
 
     # Internal
     def _send_message(self) -> None:

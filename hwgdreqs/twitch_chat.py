@@ -20,7 +20,7 @@ logger = get_logger()
 
 
 class TwitchChatWorker(QObject):
-    message_received = Signal(str, str)
+    message_received = Signal(str, str, str)
     level_detected = Signal(str, str)
     status_changed = Signal(str)
     connection_failed = Signal(str)
@@ -144,7 +144,8 @@ class TwitchChatWorker(QObject):
                 return
 
             username, message = match.group(1), match.group(2)
-            self.message_received.emit(username, message)
+            color = tags.get("color", "")
+            self.message_received.emit(username, message, color)
 
             # see tags
             user_id = tags.get("user-id", "")
@@ -459,6 +460,7 @@ class TwitchChatWorker(QObject):
             likes=int(data.get("likes", 0)),
             downloads=int(data.get("downloads", 0)),
             version=int(data.get("version", 0)),
+            potentially_unlisted=bool(data.get("potentially_unlisted", False)),
         )
         self.status_changed.emit(f"Replaced level {old_level_id} with {new_level_id} for {requester}")
 
@@ -490,6 +492,14 @@ class TwitchChatWorker(QObject):
         except GDBrowserError as e:
             return self._enqueue_placeholder(requester, level_id, message, priority, str(e), requester2=requester2)
 
+        if bool(data.get("potentially_unlisted", False)) and not self._queue.allow_potentially_unlisted:
+            self._maybe_send(
+                "unlisted_rejected",
+                f"[HwGDReqs] @{requester} your level might be unlisted, and streamer decided to not play unlisted levels, sorry 3:"
+            )
+            self.status_changed.emit(f"Rejected potentially unlisted level {level_id} from {requester}")
+            return False
+
         added = self._queue.add_level(
             level_id=str(data.get("id", level_id)),
             name=str(data.get("name", "Unknown")),
@@ -508,6 +518,7 @@ class TwitchChatWorker(QObject):
             version=int(data.get("version", 0)),
             priority=priority,
             requester2=requester2,
+            potentially_unlisted=bool(data.get("potentially_unlisted", False)),
         )
         if added:
             self.status_changed.emit(f"Queued: '{data.get('name')}' by '{data.get('author')}' from '{requester}'")

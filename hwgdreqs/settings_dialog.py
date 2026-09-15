@@ -215,6 +215,11 @@ class FiltersTab(QWidget):
         self._no_disliked_checkbox.setChecked(queue.no_disliked)
         layout.addWidget(self._no_disliked_checkbox)
 
+        self._allow_potentially_unlisted_cb = QCheckBox("Potentially unlisted levels")
+        self._allow_potentially_unlisted_cb.setChecked(queue.allow_potentially_unlisted)
+        self._allow_potentially_unlisted_cb.setToolTip("means data got fetched directly from robtops server (downloads entire level string btw) instead of gdbrowser (fails at unlisted lvls)")
+        layout.addWidget(self._allow_potentially_unlisted_cb)
+
     def apply_filters(self) -> None:
         allowed_lengths = []
         for i in range(self._length_list.count()):
@@ -231,6 +236,7 @@ class FiltersTab(QWidget):
         self._queue.allowed_difficulties = allowed_difficulties
         
         self._queue.no_disliked = self._no_disliked_checkbox.isChecked()
+        self._queue.allow_potentially_unlisted = self._allow_potentially_unlisted_cb.isChecked()
 
 
 class GeneralTab(QWidget):

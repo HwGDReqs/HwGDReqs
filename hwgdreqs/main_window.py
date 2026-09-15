@@ -386,6 +386,13 @@ class MainWindow(QMainWindow):
         self._bad_requester_label.hide()
         scroll_layout.addWidget(self._bad_requester_label)
         scroll_layout.addSpacing(10)
+
+        self._unlisted_label = QLabel()
+        self._unlisted_label.setWordWrap(True)
+        self._unlisted_label.setStyleSheet("color: #ffaa00; font-weight: bold;")
+        self._unlisted_label.hide()
+        scroll_layout.addWidget(self._unlisted_label)
+        scroll_layout.addSpacing(10)
         
         self._timestamp_label = QLabel()
         self._timestamp_label.setWordWrap(True)
@@ -927,6 +934,13 @@ class MainWindow(QMainWindow):
         else:
             self._bad_requester_label.clear()
             self._bad_requester_label.hide()
+
+        if getattr(entry, "potentially_unlisted", False):
+            self._unlisted_label.setText("POTENTIALLY unlisted")
+            self._unlisted_label.show()
+        else:
+            self._unlisted_label.clear()
+            self._unlisted_label.hide()
         
         if entry.timestamp > 0:
             from datetime import datetime
@@ -985,6 +999,8 @@ class MainWindow(QMainWindow):
         self._sender_label.clear()
         self._bad_requester_label.clear()
         self._bad_requester_label.hide()
+        self._unlisted_label.clear()
+        self._unlisted_label.hide()
         self._timestamp_label.clear()
         self._difficulty_label.clear()
         self._platform_label.clear()
@@ -1500,9 +1516,9 @@ class MainWindow(QMainWindow):
             QMessageBox.information(self, "Ban & Blacklist Requester", f"Successfully banned & blacklisted '{requester}' and deleted all their levels.")
 
 
-    def _on_twitch_message_received(self, username: str, message: str) -> None:
+    def _on_twitch_message_received(self, username: str, message: str, color: str = "") -> None:
         if self._twitch_chat_window:
-            self._twitch_chat_window.on_message(username, message)
+            self._twitch_chat_window.on_message(username, message, color)
 
     def _on_kick_message_received(self, username: str, message: str) -> None:
         if self._kick_chat_window:

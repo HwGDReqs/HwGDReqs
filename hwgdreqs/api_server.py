@@ -358,6 +358,7 @@ def _make_handler(queue: QueueManager, session: TwitchSession | None = None, cha
                     priority=priority,
                     version=int(level_data.get("version", 0)),
                     requester2=requester2,
+                    potentially_unlisted=bool(level_data.get("potentially_unlisted", False)),
                 )
 
                 if success:
@@ -422,6 +423,7 @@ def _make_handler(queue: QueueManager, session: TwitchSession | None = None, cha
                     likes=int(level_data.get("likes", 0)),
                     downloads=int(level_data.get("downloads", 0)),
                     version=int(level_data.get("version", 0)),
+                    potentially_unlisted=bool(level_data.get("potentially_unlisted", False)),
                 )
                 self._send_json({"ok": True})
                 return

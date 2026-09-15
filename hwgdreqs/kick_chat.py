@@ -478,6 +478,7 @@ class KickChatWorker(QObject):
             likes=int(data.get("likes", 0)),
             downloads=int(data.get("downloads", 0)),
             version=int(data.get("version", 0)),
+            potentially_unlisted=bool(data.get("potentially_unlisted", False)),
         )
         self.status_changed.emit(f"Replaced level {old_level_id} with {new_level_id} for {requester}")
 
@@ -509,6 +510,14 @@ class KickChatWorker(QObject):
         except GDBrowserError as e:
             return self._enqueue_placeholder(requester, level_id, message, priority, str(e), requester2=requester2)
 
+        if bool(data.get("potentially_unlisted", False)) and not self._queue.allow_potentially_unlisted:
+            self._maybe_send(
+                "unlisted_rejected",
+                f"[HwGDReqs] @{requester} your level might be unlisted, and streamer decided to not play unlisted levels, sorry 3:"
+            )
+            self.status_changed.emit(f"Rejected potentially unlisted level {level_id} from {requester}")
+            return False
+
         added = self._queue.add_level(
             level_id=str(data.get("id", level_id)),
             name=str(data.get("name", "Unknown")),
@@ -527,6 +536,7 @@ class KickChatWorker(QObject):
             version=int(data.get("version", 0)),
             priority=priority,
             requester2=requester2,
+            potentially_unlisted=bool(data.get("potentially_unlisted", False)),
         )
         if added:
             self.status_changed.emit(f"Queued: '{data.get('name')}' by '{data.get('author')}' from '{requester}'")
@@ -584,4 +594,4 @@ class KickChatWorker(QObject):
                 pass
             else:
                 self._maybe_send("filtered_out", f"[HwGDReqs] @{requester} your level \"{level_id}\" could not be added because of Filters")
-        return addeds
+        return added

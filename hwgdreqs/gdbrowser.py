@@ -1,6 +1,116 @@
 import re
+import time
 
 import requests
+
+from dashlib import (
+    fetchLevel, downloadLevel, getUserInfo,
+    LENGTH_TINY, LENGTH_SHORT, LENGTH_MEDIUM, LENGTH_LONG, LENGTH_XL, LENGTH_PLAT,
+    DIFFICULTY_NA, DIFFICULTY_EASY, DIFFICULTY_NORMAL, DIFFICULTY_HARD,
+    DIFFICULTY_HARDER, DIFFICULTY_INSANE, DIFFICULTY_EASYDEMON,
+    DIFFICULTY_MEDIUMDEMON, DIFFICULTY_HARDDEMON, DIFFICULTY_INSANEDEMON,
+    DIFFICULTY_EXTREMEDEMON, DIFFICULTY_AUTO,
+    parseDoubleColonString, int_handled,
+)
+
+LENGTH_NAMES = {
+    LENGTH_TINY:   "Tiny",
+    LENGTH_SHORT:  "Short",
+    LENGTH_MEDIUM: "Medium",
+    LENGTH_LONG:   "Long",
+    LENGTH_XL:     "XL",
+    LENGTH_PLAT:   "Platformer",
+}
+
+DIFFICULTY_NAMES = {
+    DIFFICULTY_NA:           "N/A",
+    DIFFICULTY_EASY:         "Easy",
+    DIFFICULTY_NORMAL:       "Normal",
+    DIFFICULTY_HARD:         "Hard",
+    DIFFICULTY_HARDER:       "Harder",
+    DIFFICULTY_INSANE:       "Insane",
+    DIFFICULTY_EASYDEMON:    "Easy Demon",
+    DIFFICULTY_MEDIUMDEMON:  "Medium Demon",
+    DIFFICULTY_HARDDEMON:    "Hard Demon",
+    DIFFICULTY_INSANEDEMON:  "Insane Demon",
+    DIFFICULTY_EXTREMEDEMON: "Extreme Demon",
+    DIFFICULTY_AUTO:         "Auto",
+}
+
+def resolve_account_id(player_id: int) -> int | None:
+    """Convert a player ID to an account ID via getGJUsers20.php."""
+    data = {
+        "secret": "Wmfd2893gb7",
+        "str": str(player_id),
+        "gameVersion": 22,
+    }
+    headers = {"User-Agent": ""}
+    try:
+        req = requests.post(
+            "http://www.boomlings.com/database/getGJUsers20.php",
+            data=data,
+            headers=headers,
+        )
+    except requests.RequestException:
+        return None
+
+    text = req.text
+    if not text or text == "-1":
+        return None
+
+    first_user = text.split("|")[0].split("#")[0]
+    dic = parseDoubleColonString(first_user)
+    account_id = int_handled(dic.get("16", "0"))
+    return account_id or None
+
+def fetch_level_dashlib(level_id: int):
+    try:
+        level = fetchLevel(level_id)
+        if not (level.levelID == level_id and level.levelName):
+            raise Exception("fetchLevel failed")
+    except Exception:
+        time.sleep(0.5)
+        try:
+            level = downloadLevel(level_id)
+        except Exception as e:
+            raise LevelNotFoundError(f"Level ID {level_id} not found on Geometry Dash servers") from e
+    
+    if not level.levelID or not level.levelName:
+        raise LevelNotFoundError(f"Level ID {level_id} not found on Geometry Dash servers")
+
+    raw_likes    = (level.likes + level.dislikes) // 2
+    raw_dislikes = (level.dislikes + level.likes) // 2
+
+    creator_name = "Unknown"
+    account_id = resolve_account_id(level.playerID)
+    if account_id:
+        try:
+            user = getUserInfo(account_id)
+            creator_name = user.username or "Unknown"
+        except Exception:
+            pass
+
+    length_name     = LENGTH_NAMES.get(level.length, f"Unknown ({level.length})")
+    difficulty_name = DIFFICULTY_NAMES.get(level.difficulty, "Unrated")
+    
+    if difficulty_name == "N/A":
+        difficulty_name = "Unrated"
+
+    return {
+        "id": str(level.levelID),
+        "name": level.levelName,
+        "author": creator_name,
+        "difficulty": difficulty_name,
+        "description": "",
+        "length": length_name,
+        "large": False,
+        "twoPlayer": False,
+        "disliked": False,
+        "likes": raw_likes + raw_dislikes,
+        "downloads": level.downloads,
+        "version": level.version,
+        "potentially_unlisted": True,
+    }
 
 GDBROWSER_LEVEL_URL = "https://gdbrowser.com/api/level/{level_id}"
 
@@ -27,28 +137,28 @@ def fetch_level(level_id: str) -> dict:
             timeout=10,
         )
         if response.status_code == 404:
-            raise LevelNotFoundError(f"Level ID {level_id} not found on Geometry Dash servers")
+            raise Exception("404 from gdbrowser")
         
         response.raise_for_status()
         data = response.json()
         
         if isinstance(data, dict) and (data.get("error") == "-1" or data.get("error") == "Level not found"):
-            raise LevelNotFoundError(f"Level ID {level_id} not found on Geometry Dash servers")
+            raise Exception("Level not found from gdbrowser")
         if data == -1 or data == "-1":
-            raise LevelNotFoundError(f"Level ID {level_id} not found on Geometry Dash servers")
+            raise Exception("-1 from gdbrowser")
             
         if not isinstance(data, dict) or not data.get("name"):
-            raise LevelNotFoundError(f"Level ID {level_id} not found on Geometry Dash servers")
-            
+            raise Exception("Invalid response from gdbrowser")
+        
+        data["potentially_unlisted"] = False
         return data
-    except (requests.exceptions.ConnectTimeout, requests.exceptions.ReadTimeout, requests.exceptions.Timeout) as e:
-        raise LevelFetchTimeoutError("timeout - gdbrowser took too long") from e
-    except requests.RequestException as e:
-        if e.response is not None and e.response.status_code == 404:
-            raise LevelNotFoundError(f"Level ID {level_id} not found on Geometry Dash servers") from e
-        raise GDBrowserError(str(e)) from e
-    except ValueError as e:
-        raise GDBrowserError(f"Invalid JSON response: {str(e)}") from e
+    except Exception as e:
+        try:
+            return fetch_level_dashlib(int(level_id))
+        except LevelNotFoundError:
+            raise
+        except Exception as dashlib_e:
+            raise GDBrowserError(f"Fallback to dashlib failed: {str(dashlib_e)}") from dashlib_e
 
 
 
@@ -68,6 +178,7 @@ def fetch_level_normalized(level_id: str) -> dict:
     data["likes"] = _safe_int(data.get("likes"), 0)
     data["downloads"] = _safe_int(data.get("downloads"), 0)
     data["version"] = _safe_int(data.get("version"), 0)
+    data["potentially_unlisted"] = bool(data.get("potentially_unlisted", False))
     return data
 
 
