@@ -38,7 +38,8 @@ dependencies = [
   "pytchat",
   "curl_cffi",
   "websockets",
-  "zeroconf"
+  "zeroconf",
+  "dashlib",
 ]
 
 [project.scripts]
