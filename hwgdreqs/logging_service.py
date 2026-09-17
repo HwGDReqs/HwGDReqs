@@ -8,7 +8,7 @@ from hwgdreqs.config import data_dir
 
 def update_console_logging(enabled: bool) -> None:
     logger = logging.getLogger("hwgdreqs")
-    stream_handlers = [h for h in logger.handlers if isinstance(h, logging.StreamHandler)]
+    stream_handlers = [h for h in logger.handlers if type(h) is logging.StreamHandler]
     
     if enabled:
         if not stream_handlers:

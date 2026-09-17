@@ -668,6 +668,30 @@ class ApiTab(QWidget):
         layout.addWidget(warning_label)
         layout.addSpacing(10)
         
+        # Auth settings
+        auth_layout = QVBoxLayout()
+        self._auth_check = QCheckBox("add AUTH on POST operations?")
+        self._auth_check.setChecked(queue.api_auth_enabled)
+        
+        self._auth_pass = QLineEdit()
+        self._auth_pass.setPlaceholderText("API Password")
+        self._auth_pass.setText(queue.api_auth_password)
+        self._auth_pass.setEchoMode(QLineEdit.EchoMode.Password)
+        self._auth_pass.setEnabled(queue.api_auth_enabled)
+        
+        self._auth_check.toggled.connect(self._auth_pass.setEnabled)
+        
+        auth_info = QLabel("if you happen to use the Geode mod and this didn't work: please update the mod to the latest version and then in the game go to Geode > HwGDReqs > settings > 'AUTH code' and write the same code")
+        auth_info.setWordWrap(True)
+        auth_info.setStyleSheet("color: gray;")
+        
+        auth_layout.addWidget(self._auth_check)
+        auth_layout.addWidget(self._auth_pass)
+        auth_layout.addWidget(auth_info)
+        layout.addLayout(auth_layout)
+        
+        layout.addSpacing(10)
+        
         # local API port
         local_port_layout = QHBoxLayout()
         local_port_layout.addWidget(QLabel("Local API port:"))
@@ -1032,6 +1056,8 @@ class ApiTab(QWidget):
         self._queue.api_local_port = self._local_port_spin.value()
         self._queue.api_host_to_network = self._host_network_check.isChecked()
         self._queue.api_network_port = self._network_port_spin.value()
+        self._queue.api_auth_enabled = self._auth_check.isChecked()
+        self._queue.api_auth_password = self._auth_pass.text()
         return True
 
 

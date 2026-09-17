@@ -215,17 +215,26 @@ def poll_device_token(
 
 def fetch_user(access_token: str) -> dict:
     client_id = _require_client_id()
-    response = requests.get(
-        TWITCH_USERS_URL,
-        headers={
-            "Authorization": f"Bearer {access_token}",
-            "Client-Id": client_id,
-        },
-        timeout=15,
-    )
-    if response.status_code == 401:
-        raise TwitchAuthError("Token invalid or expired")
-    response.raise_for_status()
+    for attempt in range(3):
+        response = requests.get(
+            TWITCH_USERS_URL,
+            headers={
+                "Authorization": f"Bearer {access_token}",
+                "Client-Id": client_id,
+            },
+            timeout=15,
+        )
+        if response.status_code == 401:
+            raise TwitchAuthError("Token invalid or expired")
+        try:
+            response.raise_for_status()
+            break
+        except requests.HTTPError:
+            if attempt == 2:
+                raise
+            import time
+            time.sleep(1)
+    
     users = response.json().get("data", [])
     if not users:
         raise TwitchAuthError("Could not fetch Twitch user profile")
@@ -447,10 +456,16 @@ def check_twitch_follower(session: TwitchSession, target_user_id: str) -> bool:
         "user_id": target_user_id,
     }
     try:
-        response = requests.get(url, headers=headers, params=params, timeout=10)
-        if response.status_code == 200:
-            data = response.json().get("data", [])
-            return len(data) > 0
+        for attempt in range(3):
+            response = requests.get(url, headers=headers, params=params, timeout=10)
+            if response.status_code == 200:
+                data = response.json().get("data", [])
+                return len(data) > 0
+            elif response.status_code == 401:
+                break
+            
+            if attempt < 2:
+                time.sleep(1)
     except Exception:
         pass
     return False

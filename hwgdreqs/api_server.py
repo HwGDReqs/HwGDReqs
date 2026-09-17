@@ -18,18 +18,21 @@ logger = get_logger()
 import urllib.request
 
 _aredl_cache = None
+_aredl_lock = threading.Lock()
 
 def get_aredl_position(level_id):
     global _aredl_cache
     if _aredl_cache is None:
-        try:
-            req = urllib.request.Request("https://api.aredl.net/v2/api/aredl/levels")
-            req.add_header('User-Agent', 'Mozilla/5.0')
-            with urllib.request.urlopen(req, timeout=5) as resp:
-                data = json.loads(resp.read())
-                _aredl_cache = {str(item.get("level_id")): item.get("position") for item in data}
-        except Exception:
-            _aredl_cache = {}
+        with _aredl_lock:
+            if _aredl_cache is None:
+                try:
+                    req = urllib.request.Request("https://api.aredl.net/v2/api/aredl/levels")
+                    req.add_header('User-Agent', 'Mozilla/5.0')
+                    with urllib.request.urlopen(req, timeout=5) as resp:
+                        data = json.loads(resp.read())
+                        _aredl_cache = {str(item.get("level_id")): item.get("position") for item in data}
+                except Exception:
+                    _aredl_cache = {}
     return _aredl_cache.get(str(level_id))
 
 def _make_handler(queue: QueueManager, session: TwitchSession | None = None, chat_callback=None, api_server=None):
@@ -306,6 +309,16 @@ def _make_handler(queue: QueueManager, session: TwitchSession | None = None, cha
         def _do_POST(self) -> None:
             path = urlparse(self.path).path
             params = self._params()
+
+            if queue.api_auth_enabled:
+                auth = params.get("auth")
+                if not auth:
+                    self._send_json({"ok": False, "error": "needs_auth"}, status=401)
+                    return
+                if auth != queue.api_auth_password:
+                    self._send_json({"ok": False, "error": "wrong_password_i_suppose"}, status=403)
+                    return
+
             level_id = params.get("id") or params.get("level_id") or ""
 
             if path == "/add":

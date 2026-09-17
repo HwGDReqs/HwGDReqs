@@ -417,7 +417,7 @@ class YoutubeChatWorker(QObject):
             except Exception as e:
                 if not self._stop_event.is_set():
                     err_msg = str(e)
-                    if "not currently live" in err_msg:
+                    if "not currently live" in err_msg or "This live event will begin in a few moments" in err_msg:
                         logger.info(f"YouTube channel {self._username} is not currently live (caught: {err_msg})")
                         self.not_streaming.emit()
                         self._stop_event.wait(15)

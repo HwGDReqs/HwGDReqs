@@ -119,6 +119,7 @@ class ChatWindow(QDialog):
         self._chat_worker = chat_worker
         self._can_send = can_send
         self._can_ban = can_ban
+        self._last_send_time = 0.0
 
         title = _PLATFORM_TITLES.get(platform, f"{platform.title()} Chat")
         self.setWindowTitle(title)
@@ -166,9 +167,16 @@ class ChatWindow(QDialog):
     def _send_message(self) -> None:
         if not self._input or not self._chat_worker:
             return
+        
+        import time
+        now = time.time()
+        if now - self._last_send_time < 2.0:
+            return
+            
         raw = self._input.text().strip()
         if not raw:
             return
+        self._last_send_time = now
         message = raw.replace("\\n", "\n")
         self._chat_worker._send_chat_message(message)
         self._input.clear()

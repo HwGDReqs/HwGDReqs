@@ -108,6 +108,8 @@ class QueueData:
     api_local_port: int = 6767
     api_host_to_network: bool = False
     api_network_port: int = 6767
+    api_auth_enabled: bool = False
+    api_auth_password: str = ""
 
     # prio + onli
     twitch_sub_priority: bool = False
@@ -209,7 +211,8 @@ class QueueManager(QObject):
             pass
 
     def _notify(self) -> None:
-        self.changed.emit()
+        from PySide6.QtCore import QTimer
+        QTimer.singleShot(0, self.changed.emit)
 
     @property
     def levels(self) -> list[LevelEntry]:
@@ -601,6 +604,30 @@ class QueueManager(QObject):
     def punishment_submission_limit(self, value: int) -> None:
         with self._lock:
             self._data.punishment_submission_limit = max(1, int(value))
+            self.save()
+        self._notify()
+
+    @property
+    def api_auth_enabled(self) -> bool:
+        with self._lock:
+            return self._data.api_auth_enabled
+
+    @api_auth_enabled.setter
+    def api_auth_enabled(self, value: bool) -> None:
+        with self._lock:
+            self._data.api_auth_enabled = bool(value)
+            self.save()
+        self._notify()
+
+    @property
+    def api_auth_password(self) -> str:
+        with self._lock:
+            return self._data.api_auth_password
+
+    @api_auth_password.setter
+    def api_auth_password(self, value: str) -> None:
+        with self._lock:
+            self._data.api_auth_password = str(value)
             self.save()
         self._notify()
 
