@@ -212,7 +212,7 @@ class QueueManager(QObject):
 
     def _notify(self) -> None:
         from PySide6.QtCore import QTimer
-        QTimer.singleShot(0, self.changed.emit)
+        QTimer.singleShot(0, self, self.changed.emit)
 
     @property
     def levels(self) -> list[LevelEntry]:
@@ -853,6 +853,8 @@ class QueueManager(QObject):
             api_local_port=int(raw.get("api_local_port", 6767)),
             api_host_to_network=bool(raw.get("api_host_to_network", False)),
             api_network_port=int(raw.get("api_network_port", 6767)),
+            api_auth_enabled=bool(raw.get("api_auth_enabled", False)),
+            api_auth_password=str(raw.get("api_auth_password", "")),
             twitch_sub_priority=bool(raw.get("twitch_sub_priority", False)),
             twitch_vip_priority=bool(raw.get("twitch_vip_priority", False)),
             twitch_mod_priority=bool(raw.get("twitch_mod_priority", False)),
@@ -935,6 +937,8 @@ class QueueManager(QObject):
                 "api_local_port": self._data.api_local_port,
                 "api_host_to_network": self._data.api_host_to_network,
                 "api_network_port": self._data.api_network_port,
+                "api_auth_enabled": self._data.api_auth_enabled,
+                "api_auth_password": self._data.api_auth_password,
                 "twitch_sub_priority": self._data.twitch_sub_priority,
                 "twitch_vip_priority": self._data.twitch_vip_priority,
                 "twitch_mod_priority": self._data.twitch_mod_priority,
