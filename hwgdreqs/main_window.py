@@ -1,12 +1,15 @@
 import sys
 from collections.abc import Callable
 
-from PySide6.QtCore import QEventLoop, Qt, QThread, Signal, QUrl, QSize, QTimer
-from PySide6.QtGui import QGuiApplication, QPixmap, QFont, QIcon, QKeySequence, QShortcut, QAction
+import threading
+
+from PySide6.QtCore import QEventLoop, Qt, QThread, Signal, QUrl, QSize, QTimer, QRegularExpression
+from PySide6.QtGui import QGuiApplication, QPixmap, QFont, QIcon, QKeySequence, QShortcut, QAction, QRegularExpressionValidator
 from PySide6.QtNetwork import QNetworkAccessManager, QNetworkRequest, QNetworkReply
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QListWidget,
     QListWidgetItem,
     QMainWindow,
@@ -22,6 +25,82 @@ from PySide6.QtWidgets import (
     QGridLayout,
     QMenu,
 )
+
+
+class PairRequestHolder:
+    def __init__(self, device_id: str, device_name: str, pin: str):
+        self.device_id = device_id
+        self.device_name = device_name
+        self.pin = pin
+        self.event = threading.Event()
+        self.accepted = False
+        self.entered_pin = ""
+
+
+class MobilePairDialog(QDialog):
+    def __init__(self, parent=None, device_name: str = "") -> None:
+        super().__init__(parent)
+        self.setWindowTitle("Mobile App Pairing")
+        self.setModal(True)
+        self.setFixedWidth(400)
+
+        layout = QVBoxLayout(self)
+        layout.setSpacing(14)
+        layout.setContentsMargins(20, 20, 20, 20)
+
+        title_label = QLabel("Mobile Connection Request")
+        title_font = title_label.font()
+        title_font.setPointSize(12)
+        title_font.setBold(True)
+        title_label.setFont(title_font)
+        layout.addWidget(title_label)
+
+        if device_name:
+            dev_label = QLabel(f"Device: <b>{device_name}</b>")
+            dev_label.setTextFormat(Qt.TextFormat.RichText)
+            layout.addWidget(dev_label)
+
+        prompt_label = QLabel("Type the 4 digits number that is displayed on your phone app")
+        prompt_label.setWordWrap(True)
+        layout.addWidget(prompt_label)
+
+        self._pin_input = QLineEdit()
+        self._pin_input.setMaxLength(4)
+        self._pin_input.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._pin_input.setPlaceholderText("0000")
+        pin_font = self._pin_input.font()
+        pin_font.setPointSize(22)
+        pin_font.setBold(True)
+        self._pin_input.setFont(pin_font)
+        self._pin_input.setValidator(QRegularExpressionValidator(QRegularExpression(r"^\d{4}$")))
+        layout.addWidget(self._pin_input)
+
+        btn_layout = QHBoxLayout()
+        btn_layout.setSpacing(10)
+
+        self._cancel_btn = QPushButton("Cancel")
+        self._cancel_btn.clicked.connect(self.reject)
+        btn_layout.addWidget(self._cancel_btn)
+
+        self._pair_btn = QPushButton("Confirm")
+        self._pair_btn.setDefault(True)
+        self._pair_btn.clicked.connect(self._on_pair_clicked)
+        btn_layout.addWidget(self._pair_btn)
+
+        layout.addLayout(btn_layout)
+
+        self._pin_input.returnPressed.connect(self._on_pair_clicked)
+        self._pin_input.setFocus()
+
+    def _on_pair_clicked(self) -> None:
+        pin = self._pin_input.text().strip()
+        if len(pin) == 4 and pin.isdigit():
+            self.accept()
+        else:
+            self._pin_input.setFocus()
+
+    def get_pin(self) -> str:
+        return self._pin_input.text().strip()
 
 
 class QueueListItemWidget(QWidget):
@@ -259,6 +338,8 @@ class AutoClearingStatusBar(QStatusBar):
 
 
 class MainWindow(QMainWindow):
+    mobile_pair_requested = Signal(object)
+
     def __init__(self, queue: QueueManager, parent=None) -> None:
         super().__init__(parent)
         self._queue = queue
@@ -507,7 +588,30 @@ class MainWindow(QMainWindow):
         
         # conf and start API server
         self._configure_api_server()
+        self.mobile_pair_requested.connect(self._show_mobile_pair_dialog)
+        self._api_server.set_mobile_pair_callback(self._on_api_mobile_pair)
         self._api_server.start()
+
+    def _on_api_mobile_pair(self, device_id: str, device_name: str, pin: str) -> tuple[bool, str]:
+        holder = PairRequestHolder(device_id, device_name, pin)
+        self.mobile_pair_requested.emit(holder)
+        finished = holder.event.wait(timeout=60.0)
+        if not finished or not holder.accepted:
+            return False, ""
+        return True, holder.entered_pin
+
+    def _show_mobile_pair_dialog(self, holder: PairRequestHolder) -> None:
+        try:
+            dialog = MobilePairDialog(self, device_name=holder.device_name)
+            if dialog.exec() == QDialog.DialogCode.Accepted:
+                holder.entered_pin = dialog.get_pin()
+                holder.accepted = True
+            else:
+                holder.accepted = False
+        except Exception:
+            holder.accepted = False
+        finally:
+            holder.event.set()
 
     def _show_toast(self, entry) -> None:
         self._active_toast = ToastNotification(

@@ -110,6 +110,7 @@ class QueueData:
     api_network_port: int = 6767
     api_auth_enabled: bool = False
     api_auth_password: str = ""
+    paired_mobile_devices: list[dict] = field(default_factory=list)
 
     # prio + onli
     twitch_sub_priority: bool = False
@@ -631,6 +632,62 @@ class QueueManager(QObject):
             self.save()
         self._notify()
 
+    def get_paired_devices(self) -> list[dict]:
+        with self._lock:
+            return [dict(d) for d in self._data.paired_mobile_devices]
+
+    def get_paired_device(self, device_id: str) -> dict | None:
+        with self._lock:
+            for d in self._data.paired_mobile_devices:
+                if str(d.get("device_id", "")) == str(device_id):
+                    return dict(d)
+        return None
+
+    def is_device_paired(self, device_id: str, token: str | None = None) -> bool:
+        with self._lock:
+            for d in self._data.paired_mobile_devices:
+                if str(d.get("device_id", "")) == str(device_id):
+                    if token is None:
+                        return True
+                    return str(d.get("token", "")) == str(token)
+        return False
+
+    def add_paired_device(self, device_id: str, device_name: str, token: str) -> None:
+        with self._lock:
+            self._data.paired_mobile_devices = [
+                d for d in self._data.paired_mobile_devices if str(d.get("device_id", "")) != str(device_id)
+            ]
+            self._data.paired_mobile_devices.append({
+                "device_id": str(device_id),
+                "device_name": str(device_name) if device_name else "hwgdreqs-mobile",
+                "token": str(token),
+                "paired_at": time.time(),
+                "last_seen": time.time(),
+            })
+            self.save()
+        self._notify()
+
+    def remove_paired_device(self, device_id: str) -> bool:
+        changed = False
+        with self._lock:
+            before_len = len(self._data.paired_mobile_devices)
+            self._data.paired_mobile_devices = [
+                d for d in self._data.paired_mobile_devices if str(d.get("device_id", "")) != str(device_id)
+            ]
+            changed = len(self._data.paired_mobile_devices) != before_len
+            if changed:
+                self.save()
+        if changed:
+            self._notify()
+        return changed
+
+    def update_paired_device_seen(self, device_id: str) -> None:
+        with self._lock:
+            for d in self._data.paired_mobile_devices:
+                if str(d.get("device_id", "")) == str(device_id):
+                    d["last_seen"] = time.time()
+                    break
+
     @property
     def twitch_bot_disabled_replies(self) -> list:
         with self._lock:
@@ -855,6 +912,7 @@ class QueueManager(QObject):
             api_network_port=int(raw.get("api_network_port", 6767)),
             api_auth_enabled=bool(raw.get("api_auth_enabled", False)),
             api_auth_password=str(raw.get("api_auth_password", "")),
+            paired_mobile_devices=list(raw.get("paired_mobile_devices", [])),
             twitch_sub_priority=bool(raw.get("twitch_sub_priority", False)),
             twitch_vip_priority=bool(raw.get("twitch_vip_priority", False)),
             twitch_mod_priority=bool(raw.get("twitch_mod_priority", False)),
@@ -939,6 +997,7 @@ class QueueManager(QObject):
                 "api_network_port": self._data.api_network_port,
                 "api_auth_enabled": self._data.api_auth_enabled,
                 "api_auth_password": self._data.api_auth_password,
+                "paired_mobile_devices": self._data.paired_mobile_devices,
                 "twitch_sub_priority": self._data.twitch_sub_priority,
                 "twitch_vip_priority": self._data.twitch_vip_priority,
                 "twitch_mod_priority": self._data.twitch_mod_priority,

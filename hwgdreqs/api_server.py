@@ -95,6 +95,24 @@ def _make_handler(queue: QueueManager, session: TwitchSession | None = None, cha
                     return entry
             return None
 
+        def _is_mobile_client(self, params: dict) -> bool:
+            client_id = self.headers.get("X-Client-Id", "") or params.get("client", "") or params.get("client_id", "")
+            user_agent = self.headers.get("User-Agent", "")
+            return client_id.lower() == "hwgdreqs-mobile" or "hwgdreqs-mobile" in user_agent.lower()
+
+        def _is_mobile_authenticated(self, params: dict) -> bool:
+            device_id = self.headers.get("X-Device-Id", "") or params.get("device_id", "")
+            token = self.headers.get("X-Auth-Token", "") or params.get("token", "") or params.get("auth", "")
+            if not token:
+                auth_hdr = self.headers.get("Authorization", "")
+                if auth_hdr.lower().startswith("bearer "):
+                    token = auth_hdr[7:].strip()
+            if device_id and token:
+                if queue.is_device_paired(device_id, token):
+                    queue.update_paired_device_seen(device_id)
+                    return True
+            return False
+
         def do_GET(self) -> None:
             try:
                 self._do_GET()
@@ -276,6 +294,52 @@ def _make_handler(queue: QueueManager, session: TwitchSession | None = None, cha
                 self._send_json(info)
                 return
 
+            if path == "/mobile/status":
+                from hwgdreqs.config import APP_VERSION
+                params = self._params()
+                device_id = params.get("device_id") or self.headers.get("X-Device-Id") or ""
+                token = params.get("token") or self.headers.get("X-Auth-Token") or ""
+                is_paired = queue.is_device_paired(device_id, token) if (device_id and token) else False
+                self._send_json({
+                    "ok": True,
+                    "server": "HwGDReqs",
+                    "version": APP_VERSION,
+                    "requests_enabled": queue.requests_enabled,
+                    "queue_count": len(queue.levels),
+                    "is_paired": is_paired,
+                    "auth_enabled": queue.api_auth_enabled,
+                })
+                return
+
+            if path in ("/mobile/auth", "/auth/mobile"):
+                from hwgdreqs.config import APP_VERSION
+                params = self._params()
+                device_id = params.get("device_id") or self.headers.get("X-Device-Id") or ""
+                token = params.get("token") or self.headers.get("X-Auth-Token") or params.get("auth") or ""
+                if not token:
+                    auth_hdr = self.headers.get("Authorization", "")
+                    if auth_hdr.lower().startswith("bearer "):
+                        token = auth_hdr[7:].strip()
+
+                if not device_id or not token:
+                    self._send_json({"ok": False, "error": "missing_credentials", "paired": False}, status=400)
+                    return
+
+                if queue.is_device_paired(device_id, token):
+                    queue.update_paired_device_seen(device_id)
+                    device = queue.get_paired_device(device_id)
+                    self._send_json({
+                        "ok": True,
+                        "paired": True,
+                        "server_name": "HwGDReqs",
+                        "version": APP_VERSION,
+                        "device_name": device.get("device_name", "") if device else "",
+                        "requests_enabled": queue.requests_enabled,
+                    })
+                else:
+                    self._send_json({"ok": False, "error": "unauthorized", "paired": False}, status=401)
+                return
+
             self._send_json({"ok": False, "error": "not_found"}, status=404)
 
         def do_DELETE(self) -> None:
@@ -310,14 +374,111 @@ def _make_handler(queue: QueueManager, session: TwitchSession | None = None, cha
             path = urlparse(self.path).path
             params = self._params()
 
+            if path in ("/mobile/pair", "/auth/pair"):
+                device_id = params.get("device_id") or self.headers.get("X-Device-Id") or ""
+                device_name = params.get("device_name", "hwgdreqs-mobile")
+                pin = str(params.get("pin", "")).strip()
+                client_id = params.get("client") or params.get("client_id") or self.headers.get("X-Client-Id") or ""
+                user_agent = self.headers.get("User-Agent", "")
+
+                if client_id.lower() != "hwgdreqs-mobile" and "hwgdreqs-mobile" not in user_agent.lower():
+                    self._send_json({"ok": False, "error": "invalid_client", "message": "Expected hwgdreqs-mobile client"}, status=400)
+                    return
+
+                if not device_id:
+                    self._send_json({"ok": False, "error": "missing_device_id"}, status=400)
+                    return
+
+                existing = queue.get_paired_device(device_id)
+                if existing:
+                    self._send_json({
+                        "ok": True,
+                        "paired": True,
+                        "token": existing["token"],
+                        "device_name": existing.get("device_name", device_name),
+                        "already_paired": True
+                    })
+                    return
+
+                if not api_server or not api_server._mobile_pair_callback:
+                    self._send_json({"ok": False, "error": "desktop_pair_unavailable"}, status=503)
+                    return
+
+                import secrets
+                success, entered_pin = api_server._mobile_pair_callback(device_id, device_name, pin)
+                if not success:
+                    self._send_json({"ok": False, "error": "pairing_canceled"}, status=403)
+                    return
+
+                if pin and entered_pin != pin:
+                    self._send_json({"ok": False, "error": "invalid_pin", "message": "The 4-digit code did not match"}, status=400)
+                    return
+
+                token = secrets.token_hex(20)
+                queue.add_paired_device(device_id, device_name, token)
+                logger.info("Paired new mobile device: %s (%s)", device_name, device_id)
+
+                self._send_json({
+                    "ok": True,
+                    "paired": True,
+                    "token": token,
+                    "device_id": device_id,
+                    "device_name": device_name,
+                    "message": "Paired successfully"
+                })
+                return
+
+            if path in ("/mobile/auth", "/auth/mobile"):
+                from hwgdreqs.config import APP_VERSION
+                device_id = params.get("device_id") or self.headers.get("X-Device-Id") or ""
+                token = params.get("token") or self.headers.get("X-Auth-Token") or params.get("auth") or ""
+                if not token:
+                    auth_hdr = self.headers.get("Authorization", "")
+                    if auth_hdr.lower().startswith("bearer "):
+                        token = auth_hdr[7:].strip()
+
+                if not device_id or not token:
+                    self._send_json({"ok": False, "error": "missing_credentials", "paired": False}, status=400)
+                    return
+
+                if queue.is_device_paired(device_id, token):
+                    queue.update_paired_device_seen(device_id)
+                    device = queue.get_paired_device(device_id)
+                    self._send_json({
+                        "ok": True,
+                        "paired": True,
+                        "server_name": "HwGDReqs",
+                        "version": APP_VERSION,
+                        "device_name": device.get("device_name", "") if device else "",
+                        "requests_enabled": queue.requests_enabled,
+                    })
+                else:
+                    self._send_json({"ok": False, "error": "unauthorized", "paired": False}, status=401)
+                return
+
+            if path in ("/mobile/unpair", "/auth/unpair"):
+                device_id = params.get("device_id") or self.headers.get("X-Device-Id") or ""
+                token = params.get("token") or self.headers.get("X-Auth-Token") or params.get("auth") or ""
+                if not token:
+                    auth_hdr = self.headers.get("Authorization", "")
+                    if auth_hdr.lower().startswith("bearer "):
+                        token = auth_hdr[7:].strip()
+                if not device_id or not token or not queue.is_device_paired(device_id, token):
+                    self._send_json({"ok": False, "error": "unauthorized"}, status=401)
+                    return
+                queue.remove_paired_device(device_id)
+                self._send_json({"ok": True, "unpaired": True})
+                return
+
             if queue.api_auth_enabled:
-                auth = params.get("auth")
-                if not auth:
-                    self._send_json({"ok": False, "error": "needs_auth"}, status=401)
-                    return
-                if auth != queue.api_auth_password:
-                    self._send_json({"ok": False, "error": "wrong_password_i_suppose"}, status=403)
-                    return
+                if not self._is_mobile_authenticated(params):
+                    auth = params.get("auth") or self.headers.get("X-Auth-Token") or self.headers.get("Authorization")
+                    if not auth:
+                        self._send_json({"ok": False, "error": "needs_auth"}, status=401)
+                        return
+                    if auth != queue.api_auth_password:
+                        self._send_json({"ok": False, "error": "wrong_password_i_suppose"}, status=403)
+                        return
 
             level_id = params.get("id") or params.get("level_id") or ""
 
@@ -556,6 +717,10 @@ class ApiServer:
         self._network_port: int = 0
         self._chat_callback = None
         self._kick_callback = None
+        self._mobile_pair_callback = None
+
+    def set_mobile_pair_callback(self, callback) -> None:
+        self._mobile_pair_callback = callback
 
     def set_kick_callback(self, callback) -> None:
         self._kick_callback = callback
@@ -621,7 +786,9 @@ class ApiServer:
                                 "name": "HwGDReqs",
                                 "version": APP_VERSION,
                                 "path": "/",
-                                "login": self._session.login if self._session else ""
+                                "login": self._session.login if self._session else "",
+                                "type": "hwgdreqs-desktop",
+                                "client": "hwgdreqs-desktop",
                             }
                             
                             _service_info = ServiceInfo(

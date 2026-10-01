@@ -836,9 +836,54 @@ class ApiTab(QWidget):
         swagger_layout.addWidget(swagger_btn)
         swagger_layout.addStretch()
         layout.addLayout(swagger_layout)
-        
+
+        layout.addSpacing(10)
+        paired_header = QLabel("Paired Mobile Devices (hwgdreqs-mobile)")
+        paired_header.setStyleSheet("font-weight: bold;")
+        layout.addWidget(paired_header)
+
+        self._paired_devices_layout = QVBoxLayout()
+        layout.addLayout(self._paired_devices_layout)
+        self._refresh_paired_devices()
 
         self._update_urls()
+
+    def _refresh_paired_devices(self):
+        while self._paired_devices_layout.count():
+            item = self._paired_devices_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+            elif item.layout():
+                while item.layout().count():
+                    child = item.layout().takeAt(0)
+                    if child.widget():
+                        child.widget().deleteLater()
+
+        devices = self._queue.get_paired_devices()
+        if not devices:
+            none_lbl = QLabel("No mobile devices paired yet. Mobile apps discovering via mDNS can pair with the 4-digit code popup.")
+            none_lbl.setStyleSheet("color: #888; font-style: italic;")
+            self._paired_devices_layout.addWidget(none_lbl)
+            return
+
+        for dev in devices:
+            row = QHBoxLayout()
+            dev_name = dev.get("device_name", "hwgdreqs-mobile")
+            dev_id = dev.get("device_id", "")
+            lbl = QLabel(f"📱 <b>{dev_name}</b> <span style='color: #888;'>({dev_id[:8]}...)</span>")
+            lbl.setTextFormat(Qt.TextFormat.RichText)
+            row.addWidget(lbl)
+
+            unpair_btn = QPushButton("Unpair")
+            unpair_btn.setFixedWidth(70)
+            unpair_btn.clicked.connect(lambda _, did=dev_id: self._unpair_device(did))
+            row.addWidget(unpair_btn)
+            row.addStretch()
+            self._paired_devices_layout.addLayout(row)
+
+    def _unpair_device(self, device_id: str):
+        self._queue.remove_paired_device(device_id)
+        self._refresh_paired_devices()
 
     def _visit_swagger(self):
         port = self._queue.api_local_port
