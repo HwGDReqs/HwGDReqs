@@ -35,6 +35,40 @@ def get_aredl_position(level_id):
                     _aredl_cache = {}
     return _aredl_cache.get(str(level_id))
 
+
+_chat_buffers: dict[str, list[dict]] = {
+    "twitch": [],
+    "youtube": [],
+    "kick": [],
+}
+_chat_lock = threading.Lock()
+_MAX_CHAT_HISTORY = 500
+
+
+def add_chat_message(platform: str, message: dict) -> None:
+    with _chat_lock:
+        buf = _chat_buffers.setdefault(platform, [])
+        buf.append(message)
+        if len(buf) > _MAX_CHAT_HISTORY:
+            del buf[: len(buf) - _MAX_CHAT_HISTORY]
+
+
+def get_chat_messages(platform: str, last: int | None = None) -> list[dict]:
+    with _chat_lock:
+        buf = list(_chat_buffers.get(platform, []))
+    if last is not None and last > 0:
+        return buf[-last:]
+    return buf
+
+
+def clear_chat_messages(platform: str | None = None) -> None:
+    with _chat_lock:
+        if platform:
+            _chat_buffers[platform] = []
+        else:
+            for k in _chat_buffers:
+                _chat_buffers[k] = []
+
 def _make_handler(queue: QueueManager, session: TwitchSession | None = None, chat_callback=None, api_server=None):
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, format: str, *args) -> None:
@@ -338,6 +372,82 @@ def _make_handler(queue: QueueManager, session: TwitchSession | None = None, cha
                     })
                 else:
                     self._send_json({"ok": False, "error": "unauthorized", "paired": False}, status=401)
+                return
+
+            if path in ("/chat/twitch", "/chat/twitch/"):
+                from hwgdreqs.config import load_auth
+                from hwgdreqs.twitch_auth import load_session as load_twitch_session
+
+                auth = load_auth()
+                sess = (api_server._session if api_server else None) or load_twitch_session()
+                if not auth and not sess:
+                    self._send_json({"ok": False, "error": "not logged in"}, status=401)
+                    return
+
+                params = self._params()
+                last_n = None
+                if "last" in params:
+                    try:
+                        last_n = int(params["last"])
+                        if last_n < 1:
+                            self._send_json({"ok": False, "error": "invalid_last_param"}, status=400)
+                            return
+                    except ValueError:
+                        self._send_json({"ok": False, "error": "invalid_last_param"}, status=400)
+                        return
+
+                messages = get_chat_messages("twitch", last=last_n)
+                self._send_json({"messages": messages})
+                return
+
+            if path in ("/chat/youtube", "/chat/youtube/"):
+                from hwgdreqs.youtube_auth import load_youtube_session
+
+                yt_sess = load_youtube_session()
+                if not yt_sess or not yt_sess.username:
+                    self._send_json({"ok": False, "error": "not logged in"}, status=401)
+                    return
+
+                params = self._params()
+                last_n = None
+                if "last" in params:
+                    try:
+                        last_n = int(params["last"])
+                        if last_n < 1:
+                            self._send_json({"ok": False, "error": "invalid_last_param"}, status=400)
+                            return
+                    except ValueError:
+                        self._send_json({"ok": False, "error": "invalid_last_param"}, status=400)
+                        return
+
+                messages = get_chat_messages("youtube", last=last_n)
+                self._send_json({"messages": messages})
+                return
+
+            if path in ("/chat/kick", "/chat/kick/"):
+                from hwgdreqs.config import load_kick_auth
+                from hwgdreqs.kick_auth import load_session as load_kick_session
+
+                kick_auth = load_kick_auth()
+                kick_sess = load_kick_session()
+                if not kick_auth and not kick_sess:
+                    self._send_json({"ok": False, "error": "not logged in"}, status=401)
+                    return
+
+                params = self._params()
+                last_n = None
+                if "last" in params:
+                    try:
+                        last_n = int(params["last"])
+                        if last_n < 1:
+                            self._send_json({"ok": False, "error": "invalid_last_param"}, status=400)
+                            return
+                    except ValueError:
+                        self._send_json({"ok": False, "error": "invalid_last_param"}, status=400)
+                        return
+
+                messages = get_chat_messages("kick", last=last_n)
+                self._send_json({"messages": messages})
                 return
 
             self._send_json({"ok": False, "error": "not_found"}, status=404)

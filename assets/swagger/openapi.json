@@ -1351,6 +1351,139 @@
           }
         }
       }
+    },
+    "/chat/twitch": {
+      "get": {
+        "summary": "Get Twitch chat messages",
+        "description": "Returns received Twitch chat messages if logged in.",
+        "parameters": [
+          {
+            "name": "last",
+            "in": "query",
+            "required": false,
+            "description": "Number of latest messages to return (e.g. 1 for the most recent message).",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of Twitch chat messages.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "messages": [
+                    {
+                      "id": "123",
+                      "text": "hello",
+                      "author": "malikhw47",
+                      "display_name": "MalikHw47",
+                      "timestamp": 1728360000,
+                      "badges": ["broadcaster"],
+                      "color": "#9147FF",
+                      "bits": 100
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not logged in to Twitch."
+          }
+        }
+      }
+    },
+    "/chat/youtube": {
+      "get": {
+        "summary": "Get YouTube chat messages",
+        "description": "Returns received YouTube chat messages if logged in.",
+        "parameters": [
+          {
+            "name": "last",
+            "in": "query",
+            "required": false,
+            "description": "Number of latest messages to return (e.g. 1 for the most recent message).",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of YouTube chat messages.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "messages": [
+                    {
+                      "id": "abc",
+                      "text": "pls get to my level",
+                      "author": "example",
+                      "display_name": "Example",
+                      "timestamp": 1728360000,
+                      "badges": ["moderator"],
+                      "superchat": {
+                        "amount": 5,
+                        "currency": "USD"
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not logged in to YouTube."
+          }
+        }
+      }
+    },
+    "/chat/kick": {
+      "get": {
+        "summary": "Get Kick chat messages",
+        "description": "Returns received Kick chat messages if logged in.",
+        "parameters": [
+          {
+            "name": "last",
+            "in": "query",
+            "required": false,
+            "description": "Number of latest messages to return (e.g. 1 for the most recent message).",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of Kick chat messages.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "messages": [
+                    {
+                      "id": "xyz",
+                      "text": "the frame perfect jump",
+                      "author": "example",
+                      "display_name": "Example",
+                      "timestamp": 1728360000,
+                      "badges": ["subscriber"],
+                      "color": "#53FC18"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not logged in to Kick."
+          }
+        }
+      }
     }
   }
 }

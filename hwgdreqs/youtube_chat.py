@@ -3,7 +3,9 @@ from __future__ import annotations
 import re
 import signal
 import threading
+import time
 from typing import Optional
+import uuid
 
 from PySide6.QtCore import QObject, Signal
 
@@ -326,6 +328,70 @@ class YoutubeChatWorker(QObject):
                             logger.info(f"YouTube Chat [{author}]: {message}")
                             
                             self.message_received.emit(author, message)
+
+                            # Record chat message for API
+                            try:
+                                msg_id = getattr(c, "id", "") or str(uuid.uuid4())
+                                display_name = author
+                                author_id = channel_id or author
+
+                                ts = int(time.time())
+                                raw_ts = getattr(c, "timestamp", None)
+                                if raw_ts:
+                                    try:
+                                        raw_ts_val = int(raw_ts)
+                                        if raw_ts_val > 100000000000000:
+                                            ts = int(raw_ts_val / 1000000)
+                                        elif raw_ts_val > 100000000000:
+                                            ts = int(raw_ts_val / 1000)
+                                        else:
+                                            ts = raw_ts_val
+                                    except (ValueError, TypeError):
+                                        pass
+
+                                badges_list = []
+                                try:
+                                    for badge in (getattr(c.author, "badges", []) or []):
+                                        b_type = getattr(badge, "type", "") or getattr(badge, "label", "") or getattr(badge, "title", "")
+                                        if b_type and b_type.lower() not in badges_list:
+                                            badges_list.append(b_type.lower())
+                                except Exception:
+                                    pass
+                                if getattr(c.author, "isChatModerator", False) and "moderator" not in badges_list:
+                                    badges_list.append("moderator")
+                                if getattr(c.author, "isChatOwner", False) and "owner" not in badges_list:
+                                    badges_list.append("owner")
+                                if getattr(c.author, "isChatSponsor", False) and "member" not in badges_list:
+                                    badges_list.append("member")
+                                if getattr(c.author, "isVerified", False) and "verified" not in badges_list:
+                                    badges_list.append("verified")
+
+                                superchat_obj = None
+                                if getattr(c, "type", "") == "superChat":
+                                    raw_amount = getattr(c, "amount", 0)
+                                    try:
+                                        amt = float(raw_amount)
+                                        if amt.is_integer():
+                                            amt = int(amt)
+                                    except (ValueError, TypeError):
+                                        amt = raw_amount
+                                    superchat_obj = {
+                                        "amount": amt,
+                                        "currency": getattr(c, "currency", "USD") or "USD"
+                                    }
+
+                                from hwgdreqs.api_server import add_chat_message
+                                add_chat_message("youtube", {
+                                    "id": str(msg_id),
+                                    "text": message,
+                                    "author": author_id,
+                                    "display_name": display_name,
+                                    "timestamp": ts,
+                                    "badges": badges_list,
+                                    "superchat": superchat_obj,
+                                })
+                            except Exception:
+                                pass
 
                             is_superchat = getattr(c, "type", "") == "superChat"
                             superchat_amount = ""

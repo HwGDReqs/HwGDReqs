@@ -4,6 +4,8 @@ import re
 import socket
 import ssl
 import threading
+import time
+import uuid
 
 from PySide6.QtCore import QObject, Signal
 
@@ -146,6 +148,45 @@ class TwitchChatWorker(QObject):
             username, message = match.group(1), match.group(2)
             color = tags.get("color", "")
             self.message_received.emit(username, message, color)
+
+            # Record chat message for API
+            try:
+                msg_id = tags.get("id") or str(uuid.uuid4())
+                display_name = tags.get("display-name") or username
+                tmi_ts = tags.get("tmi-sent-ts")
+                try:
+                    ts = int(int(tmi_ts) / 1000) if tmi_ts else int(time.time())
+                except (ValueError, TypeError):
+                    ts = int(time.time())
+
+                raw_badges = tags.get("badges", "")
+                badges_list = []
+                if raw_badges:
+                    for b in raw_badges.split(","):
+                        b_name = b.split("/")[0].strip()
+                        if b_name and b_name not in badges_list:
+                            badges_list.append(b_name)
+
+                bits = 0
+                if "bits" in tags:
+                    try:
+                        bits = int(tags["bits"])
+                    except (ValueError, TypeError):
+                        bits = 0
+
+                from hwgdreqs.api_server import add_chat_message
+                add_chat_message("twitch", {
+                    "id": str(msg_id),
+                    "text": message,
+                    "author": username,
+                    "display_name": display_name,
+                    "timestamp": ts,
+                    "badges": badges_list,
+                    "color": color,
+                    "bits": bits,
+                })
+            except Exception:
+                pass
 
             # see tags
             user_id = tags.get("user-id", "")

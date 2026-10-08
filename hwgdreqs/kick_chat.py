@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime
 import json
 import re
 import threading
+import time
 from typing import Optional
+import uuid
 
 from PySide6.QtCore import QObject, Signal
 import websockets
@@ -176,7 +179,43 @@ class KickChatWorker(QObject):
                                 is_broadcaster = True
 
                             self.message_received.emit(sender, content)
-                            
+
+                            # Record chat message for API
+                            try:
+                                msg_id = str(payload.get("id") or uuid.uuid4())
+                                display_name = sender
+                                author_name = sender.lower()
+
+                                created_at = payload.get("created_at")
+                                ts = int(time.time())
+                                if created_at:
+                                    try:
+                                        clean_created = created_at.replace("Z", "+00:00")
+                                        ts = int(datetime.fromisoformat(clean_created).timestamp())
+                                    except Exception:
+                                        pass
+
+                                badges_list = []
+                                for badge in badges:
+                                    b_type = badge.get("type", "").lower()
+                                    if b_type and b_type not in badges_list:
+                                        badges_list.append(b_type)
+
+                                color = sender_info.get("identity", {}).get("color", "")
+
+                                from hwgdreqs.api_server import add_chat_message
+                                add_chat_message("kick", {
+                                    "id": str(msg_id),
+                                    "text": content,
+                                    "author": author_name,
+                                    "display_name": display_name,
+                                    "timestamp": ts,
+                                    "badges": badges_list,
+                                    "color": color,
+                                })
+                            except Exception:
+                                pass
+
                             if not self._handle_commands(sender, content):
                                 self._scan_for_levels(
                                     sender,
