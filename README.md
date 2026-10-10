@@ -64,15 +64,3 @@ what the fuck did i do
 Site: https://hwgdreqs.github.io
 
 made by MalikHw47
-
----
-
-### mDNS Discovery built in! We need an android client
-When the network API server is enabled, the app broadcasts its presence on the local network via mDNS/Bonjour.
-- **Service Type:** `_hwgdreqs._tcp.local.`
-- **TXT Properties:**
-  - `port`: The API server's port (string)
-  - `name`: Always "HwGDReqs"
-  - `version`: The current app version
-  - `path`: Always "/"
-  - `login`: The active user's(twitch/youtube) login username, or `""` if none.
