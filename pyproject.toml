@@ -39,6 +39,7 @@ dependencies = [
   "curl_cffi",
   "websockets",
   "zeroconf",
+  "cryptography",
   "dashlib",
 ]
 
