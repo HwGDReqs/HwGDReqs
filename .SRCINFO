@@ -16,7 +16,7 @@ pkgbase = hwgdreqs
     depends = python-requests
     depends = python-cryptography
     depends = yt-dlp
-    source = hwgdreqs-1.14.0.tar.gz::https://github.com/HwGDReqs/HwGDReqs/archive/1.14.0.tar.gz
+    source = hwgdreqs-1.15.1.tar.gz::https://github.com/HwGDReqs/HwGDReqs/archive/1.15.1.tar.gz
     sha256sums = SKIP
 
 pkgname = hwgdreqs
