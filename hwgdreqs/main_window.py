@@ -26,6 +26,21 @@ from PySide6.QtWidgets import (
     QMenu,
 )
 
+import base64
+import io
+
+
+def _mat_icon_html(name: str, size: int = 16, color: str = "#ffffff") -> str:
+    """Return an inline HTML <img> tag for a material icon."""
+    try:
+        from material_icons import MaterialIcons, IconStyle
+        icons = MaterialIcons()
+        png_bytes = icons.get(name, size=size, color=color, style=IconStyle.ROUND)
+        b64 = base64.b64encode(png_bytes).decode()
+        return f'<img src="data:image/png;base64,{b64}" width="{size}" height="{size}"/>'
+    except Exception:
+        return ""  # graceful fallback
+
 
 class PairRequestHolder:
     def __init__(self, device_id: str, device_name: str, pin: str):
@@ -145,7 +160,7 @@ class QueueListItemWidget(QWidget):
         if bad_requester:
             self.text_label.setStyleSheet("color: #ff4d4d;")
             reason = bad_requester_reason or "reported bad requester"
-            tooltip = f"⚠️ Reported bad requester: {reason}"
+            tooltip = f"[!] Reported bad requester: {reason}"
             self.text_label.setToolTip(tooltip)
             self.setToolTip(tooltip)
         layout.addWidget(self.text_label)
@@ -1021,19 +1036,25 @@ class MainWindow(QMainWindow):
         self._author_label.setText(f"by '{entry.author}'")
         
         # add likes/downloads text
+        thumb_up = _mat_icon_html("thumb_up", size=14, color="#4caf50")
+        thumb_down = _mat_icon_html("thumb_down", size=14, color="#f44336")
+        arrow_down = _mat_icon_html("download", size=14, color="#90caf9")
         if entry.disliked:
-            likes_text = f"👎{entry.likes}"
+            likes_text = f"{thumb_down}{entry.likes}"
         else:
-            likes_text = f"👍{entry.likes}"
-        downloads_text = f"⬇️{entry.downloads}"
-        self._description_label.setText(f"{likes_text} {downloads_text}\ndescription: '{entry.description}'")
+            likes_text = f"{thumb_up}{entry.likes}"
+        downloads_text = f"{arrow_down}{entry.downloads}"
+        self._description_label.setTextFormat(Qt.TextFormat.RichText)
+        self._description_label.setText(f"{likes_text} {downloads_text}<br>description: '{entry.description}'")
         
         id_part = f" (ID: {entry.requester2})" if entry.requester2 else ""
         self._sender_label.setText(f"from '{entry.requester}'{id_part}")
         
         if getattr(entry, "bad_requester", False):
             reason = getattr(entry, "bad_requester_reason", "") or "reported bad requester"
-            self._bad_requester_label.setText(f"⚠️ Reported bad requester: {reason}")
+            warn_icon = _mat_icon_html("warning", size=14, color="#ff9800")
+            self._bad_requester_label.setTextFormat(Qt.TextFormat.RichText)
+            self._bad_requester_label.setText(f"{warn_icon} Reported bad requester: {reason}")
             self._bad_requester_label.show()
         else:
             self._bad_requester_label.clear()

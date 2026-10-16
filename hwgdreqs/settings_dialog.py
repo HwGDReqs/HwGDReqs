@@ -29,6 +29,22 @@ from PySide6.QtWidgets import (
     QPlainTextEdit,
 )
 
+import base64
+import io
+
+
+def _mat_icon_html(name: str, size: int = 16, color: str = "#ffffff") -> str:
+    """Return an inline HTML <img> tag for a material icon."""
+    try:
+        from material_icons import MaterialIcons, IconStyle
+        icons = MaterialIcons()
+        png_bytes = icons.get(name, size=size, color=color, style=IconStyle.ROUND)
+        b64 = base64.b64encode(png_bytes).decode()
+        return f'<img src="data:image/png;base64,{b64}" width="{size}" height="{size}"/>'
+    except Exception:
+        return ""  # graceful fallback
+
+
 from hwgdreqs.config import clear_auth, data_dir, asset_path, exec_dir, APP_VERSION, DEFAULT_BROWSER_SOURCE_HTML
 from hwgdreqs.queue_manager import QueueManager
 from hwgdreqs.login_dialog import TwitchLoginDialog
@@ -282,7 +298,7 @@ class GeneralTab(QWidget):
         self._allow_any_level_cb.setChecked(queue.allow_any_level)
         self._allow_any_level_cb.setToolTip(
             "When enabled, levels that can't be found via GDBrowser (e.g. unlisted) are still added.\n"
-            "They will show as '⚠️ <id>' with no data in the queue. (At your own motherf*cking risk)"
+            "They will show as '[!] <id>' with no data in the queue. (At your own motherf*cking risk)"
         )
         layout.addWidget(self._allow_any_level_cb)
 
@@ -870,7 +886,8 @@ class ApiTab(QWidget):
             row = QHBoxLayout()
             dev_name = dev.get("device_name", "hwgdreqs-mobile")
             dev_id = dev.get("device_id", "")
-            lbl = QLabel(f"📱 <b>{dev_name}</b> <span style='color: #888;'>({dev_id[:8]}...)</span>")
+            phone_icon = _mat_icon_html("phone_android", size=16, color="#90caf9")
+            lbl = QLabel(f"{phone_icon} <b>{dev_name}</b> <span style='color: #888;'>({dev_id[:8]}...)</span>")
             lbl.setTextFormat(Qt.TextFormat.RichText)
             row.addWidget(lbl)
 
@@ -935,7 +952,9 @@ class ApiTab(QWidget):
     def _update_port_warning(self):
         message = self._port_conflict_message()
         if message:
-            self._port_warning_label.setText(f"⚠️ {message}")
+            warn_icon = _mat_icon_html("warning", size=14, color="#ff9800")
+            self._port_warning_label.setTextFormat(Qt.TextFormat.RichText)
+            self._port_warning_label.setText(f"{warn_icon} {message}")
             self._port_warning_label.show()
         else:
             self._port_warning_label.clear()
@@ -1970,7 +1989,9 @@ class SettingsDialog(QDialog):
         if msg.clickedButton() == bot_btn:
             bot_msg = QMessageBox(self)
             bot_msg.setWindowTitle("Oops!")
-            bot_msg.setText("Well this shit can NOT fetch from your main acc if you're not logged in into it, so you gotta logout, login with the main one, select the reward, relogout, login again with the bot💀")
+            skull_icon = _mat_icon_html("warning_amber", size=16, color="#f44336")
+            bot_msg.setText(f"Well this shit can NOT fetch from your main acc if you're not logged in into it, so you gotta logout, login with the main one, select the reward, relogout, login again with the bot {skull_icon}")
+            bot_msg.setTextFormat(Qt.TextFormat.RichText)
             logout_btn = bot_msg.addButton("Logout Twitch", QMessageBox.ButtonRole.ActionRole)
             cancel_btn = bot_msg.addButton("Cancel", QMessageBox.ButtonRole.RejectRole)
             bot_msg.exec()

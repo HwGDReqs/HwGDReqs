@@ -244,6 +244,21 @@ def _install_geode_data(parent, geode_data: bytes) -> None:
             )
 
 def install_geode_integration(parent=None) -> None:
+    warn = QMessageBox(parent)
+    warn.setWindowTitle("BEWARE!")
+    warn.setIcon(QMessageBox.Icon.Warning)
+    warn.setText(
+        "<b>BEWARE!</b><br><br>"
+        "No <b>2.209</b> support yet until Geode gets supported AND the dev ports it.<br><br>"
+        "Proceed <b>only</b> if you have <b>2.2084 with Geode</b> installed.<br><br>"
+        "<i>PLEASE don't ask me why this doesn't work.</i>"
+    )
+    proceed_btn = warn.addButton("Proceed", QMessageBox.ButtonRole.AcceptRole)
+    warn.addButton(QMessageBox.StandardButton.Cancel)
+    warn.exec()
+    if warn.clickedButton() != proceed_btn:
+        return
+
     dialog = GeodeDownloadDialog(parent)
     result = dialog.start_download()
     if result != QDialog.DialogCode.Accepted:
