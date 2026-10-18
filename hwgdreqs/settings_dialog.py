@@ -199,7 +199,7 @@ class RequesterBlacklistTab(QWidget):
 class FiltersTab(QWidget):
     LENGTH_OPTIONS = ["Tiny", "Short", "Medium", "Long", "XL", "Plat"]
     DIFFICULTY_OPTIONS = [
-        "Unrated", "Auto", "Easy", "Normal", "Hard", "Harder", "Insane",
+        "N/A", "Auto", "Easy", "Normal", "Hard", "Harder", "Insane",
         "Easy Demon", "Medium Demon", "Hard Demon", "Insane Demon", "Extreme Demon"
     ]
 
@@ -223,18 +223,14 @@ class FiltersTab(QWidget):
         for diff in self.DIFFICULTY_OPTIONS:
             item = QListWidgetItem(diff)
             item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
-            item.setCheckState(Qt.CheckState.Checked if diff in queue.allowed_difficulties else Qt.CheckState.Unchecked)
+            stored_diff = "Unrated" if diff == "N/A" else diff
+            item.setCheckState(Qt.CheckState.Checked if stored_diff in queue.allowed_difficulties else Qt.CheckState.Unchecked)
             self._difficulty_list.addItem(item)
         layout.addWidget(self._difficulty_list)
         
         self._no_disliked_checkbox = QCheckBox("No Disliked Levels")
         self._no_disliked_checkbox.setChecked(queue.no_disliked)
         layout.addWidget(self._no_disliked_checkbox)
-
-        self._allow_potentially_unlisted_cb = QCheckBox("Potentially unlisted levels")
-        self._allow_potentially_unlisted_cb.setChecked(queue.allow_potentially_unlisted)
-        self._allow_potentially_unlisted_cb.setToolTip("means data got fetched directly from robtops server (downloads entire level string btw) instead of gdbrowser (fails at unlisted lvls)")
-        layout.addWidget(self._allow_potentially_unlisted_cb)
 
     def apply_filters(self) -> None:
         allowed_lengths = []
@@ -248,11 +244,10 @@ class FiltersTab(QWidget):
         for i in range(self._difficulty_list.count()):
             item = self._difficulty_list.item(i)
             if item.checkState() == Qt.CheckState.Checked:
-                allowed_difficulties.append(item.text())
+                allowed_difficulties.append("Unrated" if item.text() == "N/A" else item.text())
         self._queue.allowed_difficulties = allowed_difficulties
         
         self._queue.no_disliked = self._no_disliked_checkbox.isChecked()
-        self._queue.allow_potentially_unlisted = self._allow_potentially_unlisted_cb.isChecked()
 
 
 class GeneralTab(QWidget):

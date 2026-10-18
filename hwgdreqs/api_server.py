@@ -593,15 +593,18 @@ def _make_handler(queue: QueueManager, session: TwitchSession | None = None, cha
             level_id = params.get("id") or params.get("level_id") or ""
 
             if path == "/add":
-                from hwgdreqs.gdbrowser import fetch_level_normalized, GDBrowserError, LevelNotFoundError, LevelFetchTimeoutError
+                from hwgdreqs.gdbrowser import fetch_level_normalized, GDBrowserError, LevelNotFoundError, LevelFetchTimeoutError, PotentiallyUnlistedError
                 if not level_id:
                     self._send_json({"ok": False, "error": "missing_id"}, status=400)
                     return
 
                 try:
-                    level_data = fetch_level_normalized(level_id)
+                    level_data = fetch_level_normalized(level_id, queue.allow_potentially_unlisted)
                 except LevelFetchTimeoutError as e:
                     self._send_json({"ok": False, "error": str(e)}, status=504)
+                    return
+                except PotentiallyUnlistedError:
+                    self._send_json({"ok": False, "error": "potentially_unlisted_rejected"}, status=403)
                     return
                 except LevelNotFoundError as e:
                     self._send_json({"ok": False, "error": str(e)}, status=404)
@@ -657,7 +660,7 @@ def _make_handler(queue: QueueManager, session: TwitchSession | None = None, cha
                 return
 
             if path == "/replace":
-                from hwgdreqs.gdbrowser import fetch_level_normalized, GDBrowserError, LevelNotFoundError, LevelFetchTimeoutError
+                from hwgdreqs.gdbrowser import fetch_level_normalized, GDBrowserError, LevelNotFoundError, LevelFetchTimeoutError, PotentiallyUnlistedError
                 old_level_id = params.get("id") or params.get("old_id") or ""
                 new_level_id = params.get("new_id") or params.get("new_level_id") or ""
                 if not old_level_id or not new_level_id:
@@ -665,9 +668,12 @@ def _make_handler(queue: QueueManager, session: TwitchSession | None = None, cha
                     return
 
                 try:
-                    level_data = fetch_level_normalized(new_level_id)
+                    level_data = fetch_level_normalized(new_level_id, queue.allow_potentially_unlisted)
                 except LevelFetchTimeoutError as e:
                     self._send_json({"ok": False, "error": str(e)}, status=504)
+                    return
+                except PotentiallyUnlistedError:
+                    self._send_json({"ok": False, "error": "potentially_unlisted_rejected"}, status=403)
                     return
                 except LevelNotFoundError as e:
                     self._send_json({"ok": False, "error": str(e)}, status=404)

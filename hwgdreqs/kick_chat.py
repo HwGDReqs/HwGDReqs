@@ -15,7 +15,7 @@ from curl_cffi import requests as cffi_requests
 import requests
 
 from hwgdreqs.config import LEVEL_ID_PATTERN, COMMA_LEVEL_ID_PATTERN
-from hwgdreqs.gdbrowser import fetch_level_normalized, placeholder_level_data, GDBrowserError, LevelNotFoundError, LevelFetchTimeoutError
+from hwgdreqs.gdbrowser import fetch_level_normalized, placeholder_level_data, GDBrowserError, LevelNotFoundError, LevelFetchTimeoutError, PotentiallyUnlistedError
 from hwgdreqs.logging_service import get_logger
 from hwgdreqs.queue_manager import QueueManager
 from hwgdreqs.kick_auth import KickSession
@@ -485,10 +485,14 @@ class KickChatWorker(QObject):
             return
         
         try:
-            data = fetch_level_normalized(new_level_id)
+            data = fetch_level_normalized(new_level_id, self._queue.allow_potentially_unlisted)
         except LevelFetchTimeoutError:
             logger.warning(f"Could not fetch new level {new_level_id} (timeout - gdbrowser took too long)")
             self.status_changed.emit(f"Could not fetch new level {new_level_id} (timeout - gdbrowser took too long)")
+            return
+        except PotentiallyUnlistedError:
+            self._maybe_send("unlisted_rejected", f"[HwGDReqs] @{requester} your level might be unlisted, and streamer decided to not play unlisted levels, sorry 3:")
+            self.status_changed.emit(f"Rejected potentially unlisted level {new_level_id} from {requester}")
             return
         except LevelNotFoundError:
             logger.warning(f"Level ID {new_level_id} not found on Geometry Dash servers")
@@ -531,9 +535,13 @@ class KickChatWorker(QObject):
             return False
 
         try:
-            data = fetch_level_normalized(level_id)
+            data = fetch_level_normalized(level_id, self._queue.allow_potentially_unlisted)
         except LevelFetchTimeoutError:
             return self._enqueue_placeholder(requester, level_id, message, priority, "timeout - gdbrowser took too long", requester2=requester2)
+        except PotentiallyUnlistedError:
+            self._maybe_send("unlisted_rejected", f"[HwGDReqs] @{requester} your level might be unlisted, and streamer decided to not play unlisted levels, sorry 3:")
+            self.status_changed.emit(f"Rejected potentially unlisted level {level_id} from {requester}")
+            return False
         except LevelNotFoundError:
             logger.warning(f"Level ID {level_id} not found on Geometry Dash servers")
             if not self._queue.allow_any_level:

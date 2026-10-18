@@ -154,7 +154,7 @@ class QueueData:
 
     browser_source_html: str = ""
 
-    # allow potentially unlisted levels (dashlib)
+    # allow metadata fallback through the direct Geometry Dash API
     allow_potentially_unlisted: bool = True
 
 

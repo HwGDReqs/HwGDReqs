@@ -17,7 +17,7 @@ except ImportError:
     pytchat = None
 
 from hwgdreqs.config import LEVEL_ID_PATTERN
-from hwgdreqs.gdbrowser import fetch_level_normalized, placeholder_level_data, GDBrowserError, LevelNotFoundError, LevelFetchTimeoutError
+from hwgdreqs.gdbrowser import fetch_level_normalized, placeholder_level_data, GDBrowserError, LevelNotFoundError, LevelFetchTimeoutError, PotentiallyUnlistedError
 from hwgdreqs.logging_service import get_logger
 from hwgdreqs.queue_manager import QueueManager
 
@@ -143,10 +143,13 @@ class YoutubeChatWorker(QObject):
             return
 
         try:
-            data = fetch_level_normalized(new_level_id)
+            data = fetch_level_normalized(new_level_id, self._queue.allow_potentially_unlisted)
         except LevelFetchTimeoutError:
             logger.warning(f"Could not fetch new level {new_level_id} (timeout - gdbrowser took too long)")
             self.status_changed.emit(f"Could not fetch new level {new_level_id} (timeout - gdbrowser took too long)")
+            return
+        except PotentiallyUnlistedError:
+            self.status_changed.emit(f"Rejected potentially unlisted level {new_level_id} from {requester}")
             return
         except LevelNotFoundError:
             logger.warning(f"Level ID {new_level_id} not found on Geometry Dash servers")
@@ -185,13 +188,16 @@ class YoutubeChatWorker(QObject):
                        superchat_amount: str = "", member: bool = False,
                        requester2: str = "") -> bool:
         try:
-            data = fetch_level_normalized(level_id)
+            data = fetch_level_normalized(level_id, self._queue.allow_potentially_unlisted)
         except LevelFetchTimeoutError:
             return self._enqueue_placeholder(
                 requester, level_id, message, priority, superchat, superchat_amount, member,
                 reason="timeout - gdbrowser took too long",
                 requester2=requester2,
             )
+        except PotentiallyUnlistedError:
+            self.status_changed.emit(f"Rejected potentially unlisted level {level_id} from {requester}")
+            return False
         except LevelNotFoundError:
             logger.warning(f"Level ID {level_id} not found on Geometry Dash servers")
             if not self._queue.allow_any_level:

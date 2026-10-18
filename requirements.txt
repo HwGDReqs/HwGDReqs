@@ -8,4 +8,3 @@ qrcode
 curl_cffi
 websockets
 zeroconf
-dashlib

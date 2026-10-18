@@ -1,118 +1,102 @@
+import base64
 import re
-import time
 
 import requests
 
-from dashlib import (
-    fetchLevel, downloadLevel, getUserInfo,
-    LENGTH_TINY, LENGTH_SHORT, LENGTH_MEDIUM, LENGTH_LONG, LENGTH_XL, LENGTH_PLAT,
-    DIFFICULTY_NA, DIFFICULTY_EASY, DIFFICULTY_NORMAL, DIFFICULTY_HARD,
-    DIFFICULTY_HARDER, DIFFICULTY_INSANE, DIFFICULTY_EASYDEMON,
-    DIFFICULTY_MEDIUMDEMON, DIFFICULTY_HARDDEMON, DIFFICULTY_INSANEDEMON,
-    DIFFICULTY_EXTREMEDEMON, DIFFICULTY_AUTO,
-    parseDoubleColonString, int_handled,
-)
+GD_DATABASE_URL = "https://www.boomlings.com/database"
+GD_SECRET = "Wmfd2893gb7"
+GD_GAME_VERSION = 22
+GD_BINARY_VERSION = 51
+GD_HEADERS = {"User-Agent": "", "Content-Type": "application/x-www-form-urlencoded"}
 
 LENGTH_NAMES = {
-    LENGTH_TINY:   "Tiny",
-    LENGTH_SHORT:  "Short",
-    LENGTH_MEDIUM: "Medium",
-    LENGTH_LONG:   "Long",
-    LENGTH_XL:     "XL",
-    LENGTH_PLAT:   "Platformer",
+    0: "Tiny", 1: "Short", 2: "Medium", 3: "Long", 4: "XL", 5: "Platformer",
 }
 
-DIFFICULTY_NAMES = {
-    DIFFICULTY_NA:           "N/A",
-    DIFFICULTY_EASY:         "Easy",
-    DIFFICULTY_NORMAL:       "Normal",
-    DIFFICULTY_HARD:         "Hard",
-    DIFFICULTY_HARDER:       "Harder",
-    DIFFICULTY_INSANE:       "Insane",
-    DIFFICULTY_EASYDEMON:    "Easy Demon",
-    DIFFICULTY_MEDIUMDEMON:  "Medium Demon",
-    DIFFICULTY_HARDDEMON:    "Hard Demon",
-    DIFFICULTY_INSANEDEMON:  "Insane Demon",
-    DIFFICULTY_EXTREMEDEMON: "Extreme Demon",
-    DIFFICULTY_AUTO:         "Auto",
+FACE_DIFFICULTY_NAMES = {
+    0: "Unrated", 1: "Easy", 2: "Normal", 3: "Hard", 4: "Harder", 5: "Insane",
 }
 
-def resolve_account_id(player_id: int) -> int | None:
-    """Convert a player ID to an account ID via getGJUsers20.php."""
+DEMON_FACE_DIFFICULTY_NAMES = {
+    3: "Easy Demon", 4: "Medium Demon", 0: "Hard Demon", 5: "Insane Demon", 6: "Extreme Demon",
+}
+
+
+def _decode_description(value: str) -> str:
+    if not value:
+        return ""
+    try:
+        padded = value + "=" * (-len(value) % 4)
+        return base64.urlsafe_b64decode(padded).decode("utf-8")
+    except (ValueError, UnicodeDecodeError):
+        return value
+
+
+def _parse_level_response(text: str) -> list[dict[str, str]]:
+    levels = []
+    for level_text in text.split("|"):
+        level = {}
+        fields = level_text.split(":")
+        for index in range(0, len(fields) - 1, 2):
+            level[fields[index]] = fields[index + 1]
+        if level:
+            levels.append(level)
+    return levels
+
+
+def _post_database(endpoint: str, data: dict) -> str:
+    response = requests.post(
+        f"{GD_DATABASE_URL}/{endpoint}",
+        data=data,
+        headers=GD_HEADERS,
+        timeout=10,
+    )
+    response.raise_for_status()
+    if not response.text or response.text == "-1":
+        raise ValueError(f"{endpoint} returned no result")
+    return response.text
+
+
+def resolve_creator_name(player_id: str) -> str:
+    """Resolve the level creator's username without downloading level data."""
     data = {
-        "secret": "Wmfd2893gb7",
-        "str": str(player_id),
-        "gameVersion": 22,
+        "secret": GD_SECRET,
+        "str": player_id,
+        "gameVersion": GD_GAME_VERSION,
     }
-    headers = {"User-Agent": ""}
     try:
-        req = requests.post(
-            "http://www.boomlings.com/database/getGJUsers20.php",
-            data=data,
-            headers=headers,
-        )
-    except requests.RequestException:
-        return None
+        users = _parse_level_response(_post_database("getGJUsers20.php", data))
+        return users[0].get("1", "Unknown") if users else "Unknown"
+    except (requests.RequestException, ValueError):
+        return "Unknown"
 
-    text = req.text
-    if not text or text == "-1":
-        return None
 
-    first_user = text.split("|")[0].split("#")[0]
-    dic = parseDoubleColonString(first_user)
-    account_id = int_handled(dic.get("16", "0"))
-    return account_id or None
+def _face_difficulty(level: dict[str, str]) -> str:
+    if _safe_int(level.get("8")) != 10:
+        return "Unrated"
+    if level.get("25") == "1":
+        return "Auto"
+    if level.get("17") == "1":
+        return DEMON_FACE_DIFFICULTY_NAMES.get(_safe_int(level.get("43")), "Unrated")
+    return FACE_DIFFICULTY_NAMES.get(_safe_int(level.get("9")) // 10, "Unrated")
 
-def fetch_level_dashlib(level_id: int):
-    try:
-        level = fetchLevel(level_id)
-        if not (level.levelID == level_id and level.levelName):
-            raise Exception("fetchLevel failed")
-    except Exception:
-        time.sleep(0.5)
-        try:
-            level = downloadLevel(level_id)
-        except Exception as e:
-            raise LevelNotFoundError(f"Level ID {level_id} not found on Geometry Dash servers") from e
-    
-    if not level.levelID or not level.levelName:
-        raise LevelNotFoundError(f"Level ID {level_id} not found on Geometry Dash servers")
 
-    raw_likes    = (level.likes + level.dislikes) // 2
-    raw_dislikes = (level.dislikes + level.likes) // 2
-
-    creator_name = "Unknown"
-    account_id = resolve_account_id(level.playerID)
-    if account_id:
-        try:
-            user = getUserInfo(account_id)
-            creator_name = user.username or "Unknown"
-        except Exception:
-            pass
-
-    length_name     = LENGTH_NAMES.get(level.length, f"Unknown ({level.length})")
-    difficulty_name = DIFFICULTY_NAMES.get(level.difficulty, "Unrated")
-    
-    if difficulty_name == "N/A":
-        difficulty_name = "Unrated"
-
+def _level_to_data(level: dict[str, str], potentially_unlisted: bool) -> dict:
     return {
-        "id": str(level.levelID),
-        "name": level.levelName,
-        "author": creator_name,
-        "difficulty": difficulty_name,
-        "description": "",
-        "length": length_name,
+        "id": level.get("1", ""),
+        "name": level.get("2", ""),
+        "author": resolve_creator_name(level.get("6", "")),
+        "difficulty": _face_difficulty(level),
+        "description": _decode_description(level.get("3", "")),
+        "length": LENGTH_NAMES.get(_safe_int(level.get("15")), "Unknown"),
         "large": False,
-        "twoPlayer": False,
+        "twoPlayer": level.get("31") == "1",
         "disliked": False,
-        "likes": raw_likes + raw_dislikes,
-        "downloads": level.downloads,
-        "version": level.version,
-        "potentially_unlisted": True,
+        "likes": _safe_int(level.get("14")),
+        "downloads": _safe_int(level.get("10")),
+        "version": _safe_int(level.get("5")),
+        "potentially_unlisted": potentially_unlisted,
     }
-
-GDBROWSER_LEVEL_URL = "https://gdbrowser.com/api/level/{level_id}"
 
 _LEVEL_ID_RE = re.compile(r"^\d{1,10}$")
 
@@ -123,42 +107,59 @@ class GDBrowserError(Exception):
 class LevelNotFoundError(GDBrowserError):
     pass
 
+class PotentiallyUnlistedError(LevelNotFoundError):
+    pass
+
 class LevelFetchTimeoutError(GDBrowserError):
     pass
 
-def fetch_level(level_id: str) -> dict:
+def fetch_level(level_id: str, allow_potentially_unlisted: bool = True) -> dict:
     level_id = str(level_id).strip()
     if not _LEVEL_ID_RE.match(level_id):
         raise LevelNotFoundError(f"Level ID {level_id!r} is not a valid Geometry Dash level ID")
 
     try:
-        response = requests.get(
-            GDBROWSER_LEVEL_URL.format(level_id=level_id),
-            timeout=10,
-        )
-        if response.status_code == 404:
-            raise Exception("404 from gdbrowser")
-        
-        response.raise_for_status()
-        data = response.json()
-        
-        if isinstance(data, dict) and (data.get("error") == "-1" or data.get("error") == "Level not found"):
-            raise Exception("Level not found from gdbrowser")
-        if data == -1 or data == "-1":
-            raise Exception("-1 from gdbrowser")
-            
-        if not isinstance(data, dict) or not data.get("name"):
-            raise Exception("Invalid response from gdbrowser")
-        
-        data["potentially_unlisted"] = False
-        return data
-    except Exception as e:
+        response = _post_database("getGJLevels21.php", {
+            "secret": GD_SECRET,
+            "gameVersion": GD_GAME_VERSION,
+            "binaryVersion": GD_BINARY_VERSION,
+            "gdw": 0,
+            "type": 0,
+            "str": level_id,
+            "page": 0,
+            "total": 0,
+            "uncompleted": 0,
+            "onlyCompleted": 0,
+            "featured": 0,
+            "original": 0,
+            "twoPlayer": 0,
+            "coins": 0,
+            "epic": 0,
+            "demonFilter": -1,
+            "star": 0,
+            "noStar": 0,
+            "len": -1,
+        })
+        levels = [level for level in _parse_level_response(response) if level.get("1") == level_id]
+        if not levels or not levels[0].get("2"):
+            raise ValueError("Level not found in normal level search")
+        return _level_to_data(levels[0], potentially_unlisted=False)
+    except (requests.RequestException, ValueError):
+        if not allow_potentially_unlisted:
+            raise PotentiallyUnlistedError(level_id)
         try:
-            return fetch_level_dashlib(int(level_id))
-        except LevelNotFoundError:
-            raise
-        except Exception as dashlib_e:
-            raise GDBrowserError(f"Fallback to dashlib failed: {str(dashlib_e)}") from dashlib_e
+            response = _post_database("downloadGJLevel22.php", {
+                "secret": GD_SECRET,
+                "gameVersion": GD_GAME_VERSION,
+                "binaryVersion": GD_BINARY_VERSION,
+                "levelID": level_id,
+            })
+            levels = _parse_level_response(response)
+            if not levels or levels[0].get("1") != level_id or not levels[0].get("2"):
+                raise ValueError("Level not found in level download")
+            return _level_to_data(levels[0], potentially_unlisted=True)
+        except (requests.RequestException, ValueError) as download_error:
+            raise LevelNotFoundError(f"Level ID {level_id} not found on Geometry Dash servers") from download_error
 
 
 
@@ -169,8 +170,8 @@ def _safe_int(value, default: int = 0) -> int:
         return default
 
 
-def fetch_level_normalized(level_id: str) -> dict:
-    data = dict(fetch_level(level_id))
+def fetch_level_normalized(level_id: str, allow_potentially_unlisted: bool = True) -> dict:
+    data = dict(fetch_level(level_id, allow_potentially_unlisted))
     difficulty = str(data.get("difficulty", "Unrated"))
     if difficulty in ("NA", "Unknown"):
         difficulty = "Unrated"
